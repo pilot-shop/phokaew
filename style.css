@@ -1,4 +1,4 @@
-/* Betagro Shop Phokeaw: white & green, no external font / icon dependency. v3.1.1: larger customer text, single promo strip, pay block on top. v3.1.0: dark mode follows the device, or the back-office toggle (html[data-theme]) */
+/* Betagro Shop Phokeaw: white & green, no external font / icon dependency. v3.1.2: bill delivery time, readiness checklist. v3.1.1: larger customer text, single promo strip, pay block on top. v3.1.0: dark mode follows the device, or the back-office toggle (html[data-theme]) */
 :root{--bg:#F5F7F4;--surface:#FFFFFF;--surface-2:#F2F6F1;--sunk:#E7EEE8;--ink:#183C30;--ink-2:#465E53;--muted:#617368;--line:#E0E8DF;--line-2:#BBCDBF;--brand:#00845F;--brand-btn:#006B4E;--brand-ink:#006346;--brand-soft:#E9F4EC;--accent:#205B54;--accent-soft:#EAF3F2;--accent-ink:#235A54;--warn:#805200;--warn-soft:#FFF5D9;--bad:#AC2D26;--bad-soft:#FCEDEB;--good:#006346;--good-soft:#E9F4EC;--radius:18px;--top-height:90px;color-scheme:light}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -397,3 +397,15 @@ details.cond>summary::-webkit-details-marker{display:none}
 .row.adj{color:var(--ink-2)}
 /* ซื้อคู่พิเศษวันนี้: แถวสินค้าแบบเดียวกับหมวดอื่น */
 .smart-today .section-sub+.prod{border-top:0}
+
+/* ===== v3.1.2 (แก้จาก UAT) ===== */
+.sk-num{color:var(--muted);font-weight:500}
+.bill-when{display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:14px;line-height:1.4;color:var(--ink)}
+.bill-when .ui-icon,.bill-when svg{width:16px;height:16px;flex-shrink:0;margin-top:2px}
+.pin-res span small.hint{display:block;margin-top:2px}
+.ready-box .ready-row{align-items:flex-start}
+.ready-box .ready-row>span,.ready-box .ready-row>span:last-child{display:flex;flex-direction:column;align-items:flex-start;gap:2px;flex:1;max-width:none;text-align:left}
+.ready-box .ready-row.ok b{color:var(--good)}
+.ready-box .ready-row.block b{color:var(--bad)}
+.ready-box .ready-row.warn b{color:var(--warn)}
+.ready-warn .text-btn{margin-left:6px}

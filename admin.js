@@ -82,7 +82,7 @@
     if (A.alert > 0) banner += '<button class="new-banner" data-a="admBanner">' + ic('bell') + '<b>ออเดอร์ใหม่ ' + A.alert + ' รายการ</b><span>แตะเพื่อดู</span></button>';
     var ov = '';
     if (/^(orders|pay|route|members)$/.test(A.tab) && can('view')) ov = '<div class="admin-overview">' + [['orders', 'รอเปิดบิล', cn.toBill !== undefined ? cn.toBill : (cn.newOrders || 0) + (cn.approved || 0)], ['pay', 'รอตรวจยอดโอน', cn.payReview], ['route', 'รอส่ง', cn.deliveries], ['members', 'สมาชิกรอตรวจ', cn.pendingMembers]]
-      .map(function (x) { return '<button class="stat-card' + (A.tab === x[0] ? ' on' : '') + '" data-a="tab" data-p="' + x[0] + '"><span>' + x[1] + '</span><strong>' + (x[2] || 0) + '</strong></button>'; }).join('') + '</div>';
+      .map(function (x) { return '<button class="stat-card' + (A.tab === x[0] ? ' on' : '') + '" data-a="tab" data-p="' + x[0] + '"><span>' + x[1] + '</span><strong>' + (A.counts ? (x[2] || 0) : '<span class="sk-num" aria-label="กำลังโหลด">–</span>') + '</strong></button>'; }).join('') + '</div>';
     return C.adminFrame({ title: tabTitle(A.tab), tools: C.adminTools({ sound: A.sound }), banner: banner, body: ov + inner,
       nav: tabs().map(function (x) { return { id: x[0], label: x[1], icon: ic(x[3]), badge: badge[x[0]] || '', on: A.tab === x[0] }; }) });
   }
@@ -91,7 +91,7 @@
     var cfg = d.cfg || {}, CFG = window.APP_CONFIG || {};
     var warn = cfg.LIFF_ID && cfg.LIFF_ID !== CFG.LIFF_ID ? '<div class="alert bad">LIFF_ID ในชีต Config (' + esc(cfg.LIFF_ID) + ') ไม่ตรงกับ config.js (' + esc(CFG.LIFF_ID) + ') ปุ่มในการ์ดแชตและลิงก์ชวนจะเปิดไม่ได้ ให้แก้ให้ตรงกัน</div>' : '';
     var body = ({ orders: adOrders, pay: adPay, route: adRoute, members: adMembers, aff: adAff, price: adPrice, promo: adPromo, stock: adStock, report: adReport, bc: adBc, team: adTeam, tools: adTools }[A.tab] || adOrders)(d);
-    render(shell(warn + body));
+    render(shell(warn + (can('manage') ? readyWarn(d) : '') + body));
     document.title = (A.alert ? '(' + A.alert + ') ออเดอร์ใหม่ - ' : '') + 'หลังร้าน - ' + tabTitle(A.tab);
   }
   function rangeBar(kinds) {
@@ -145,7 +145,7 @@
     return p;
   }
   function orderCard(o, d, list) {
-    var other = list.filter(function (x) { return x !== o && x.memberId === o.memberId && (x.status === 'new' || x.status === 'approved'); })[0], open = /new|approved/.test(o.status), probs = orderProblems(o);
+    var other = (o.mode || 'deliver') !== 'deliver' ? null : list.filter(function (x) { return x !== o && x.memberId === o.memberId && (x.mode || 'deliver') === 'deliver' && (x.status === 'new' || x.status === 'approved'); })[0] /* 3.1.2: เฉพาะส่งถึงที่ทั้งคู่ */, open = /new|approved/.test(o.status), probs = orderProblems(o);
     var h = '<article class="ord' + (probs.length ? ' has-problem' : '') + ((A.pick.ord || {})[o.id] ? ' picked' : '') + '" id="o-' + esc(o.id) + '"><div class="ord-h">' + (/new|approved|billed/.test(o.status) ? pickBox('ord', o.id, o.id + ' ' + o.memberName) : '') + '<b class="mono">' + esc(o.id) + '</b><span class="hint">' + esc(o.created) + '</span><span class="pill">' + esc(o.src) + '</span>' +
       (o.memberStatus === 'new' ? '<span class="pill paid">ลูกค้าใหม่</span>' : '') + (o.preOrder ? '<span class="pill bill">สั่งตอนร้านปิด</span>' : '') + (o.promo ? '<span class="pill appr">' + (o.promo === 'MAGNET' ? 'Magnet' : 'Smart Set') + '</span>' : '') + (o.attName ? '<span class="pill">' + esc((o.attKind === 'ref' ? 'ผู้ชวน ' : 'ป้าย ') + o.attName) + '</span>' : '') +
       '<span class="grow"></span>' + (open ? '<span class="pill new">รอเปิดบิล</span>' : statusPill(o.status)) + '</div>' +
@@ -312,7 +312,7 @@
       (s.deliveryNote ? '<div class="hint"><b>จุดจอด / คนรับ:</b> ' + esc(s.deliveryNote) + '</div>' : '') + '<div class="hint"><span class="mono">' + esc(s.id) + '</span> ' + s.kg + ' กก. ' + baht(s.est) + '</div></div></div>';
   }
   function adDispatch(d) {
-    var r = d.route, D = r.dispatch, edit = can('route'), kpi = D.kpi || {};
+    var r = d.route, D = r.dispatch, edit = can('route'), kpi = D.kpi || {}; A.bikes = D.bikes || [];
     var h = '<div class="date-bar"><div class="date-fields"><label>วันส่ง <input type="date" data-chg="admRouteDate" value="' + A.routeDate + '"></label></div><div class="dl-row"><button class="btn sm" data-a="admPrint" data-p="all">' + ic('print') + ' พิมพ์ใบงานทั้งหมด</button>' + (can('export') ? '<button class="btn sm" data-a="admExport" data-k="trips" data-month="1">' + ic('dl') + ' สมุดจดรอบ .xlsx</button>' : '') + '</div></div>';
     h += '<div class="bike-row">' + D.bikes.map(function (b) {
       return '<div class="bike-card ' + (b.free ? 'free' : 'onroad') + '"><span class="bike-ic">' + icon('truck') + '</span><div><b>รถ ' + esc(b.bike) + '</b><small>' + (b.free ? 'ว่าง พร้อมออก' : 'กำลังส่ง กลับประมาณ ' + esc(b.freeAt) + ' น.') + '</small></div>' + (!b.free && b.trip && edit ? '<button class="btn sm" data-a="admBack" data-trip="' + esc(b.trip.id) + '">กลับแล้ว</button>' : '') + '</div>';
@@ -604,23 +604,37 @@
   }
 
   /* ---------- เครื่องมือ (ผู้จัดการ) ---------- */
+  /* 3.1.2 รายการพร้อมเปิดให้ลูกค้าจริง (ผู้จัดการ) */
+  function readyBox(list) {
+    if (!list || !list.length) return '';
+    var bad = list.filter(function (x) { return !x.ok; }).length;
+    return '<div class="box ready-box"><h3>' + ic('check') + ' พร้อมเปิดให้ลูกค้าจริง ' + (bad ? '<span class="pill red">เหลือ ' + bad + ' ข้อ</span>' : '<span class="pill paid">ครบแล้ว</span>') + '</h3>' +
+      list.map(function (x) { return '<div class="row ready-row ' + (x.ok ? 'ok' : x.level) + '"><span><b>' + (x.ok ? '✓ ' : x.level === 'block' ? '✗ ' : '! ') + esc(x.name) + '</b><small class="hint">' + esc(x.note) + '</small></span></div>'; }).join('') + '</div>';
+  }
+  function readyWarn(d) {
+    var list = d.ready || [], block = list.filter(function (x) { return !x.ok && x.level === 'block'; }), q = list.filter(function (x) { return x.key === 'quota' && !x.ok; })[0];
+    if (A.tab === 'tools' || (!block.length && !q)) return '';
+    return (block.length ? '<div class="alert bad ready-warn">' + ic('alert') + ' ยังไม่พร้อมเปิดให้ลูกค้าจริง: ' + block.map(function (x) { return esc(x.name); }).join(', ') + ' <button class="text-btn" data-a="tab" data-p="tools">ดูรายการ</button></div>' : '') +
+      (q ? '<div class="alert warn ready-quota">' + esc(q.name) + ': ' + esc(q.note) + '</div>' : '');
+  }
   function adTools(d) {
     var t = d.tools || {}, jobs = t.jobs || {}, q = d.quota || {};
     function jobLine(k, label, btn) {
       var r = jobs[k];
       return '<div class="job-row"><div><b>' + label + '</b><small class="hint">' + (r ? 'ล่าสุด ' + esc(r.at) + ' · ' + jobText(r) : 'ยังไม่เคยรัน') + '</small></div><button class="btn sm" data-a="adm" data-op="runJob" data-job="' + k + '">' + btn + '</button></div>';
     }
-    var h = '';
+    var h = can('manage') ? readyBox(d.ready) : '';
     if (S.me.staff && S.me.staff.role === 'manager' && t.testMode) h += '<div class="box test-box"><h3>' + ic('users') + ' ทดสอบบทบาท (เฉพาะผู้จัดการ + TEST_MODE)</h3><div class="hint">ดูหน้าจอและทำรายการได้เท่ากับบทบาทที่เลือก เพื่อทดสอบ/สอนงาน · หลังบ้านลดสิทธิ์ให้จริง (เพิ่มสิทธิ์ไม่ได้) · กลับได้จากแถบด้านบน</div><div class="acts" style="margin-top:8px">' +
       [['cashier', 'พนักงานร้าน'], ['driver', 'พนักงานส่งของ'], ['viewer', 'ดูอย่างเดียว']].map(function (x) { return '<button class="btn sm" data-a="admAsRole" data-p="' + x[0] + '">ดูเป็น ' + x[1] + '</button>'; }).join('') + '</div></div>';
     var c = d.cfg || {}, H = { open: c.SHOP_OPEN || '07:00', last: c.DELIVERY_LAST_ORDER || '17:00', pay: c.PAY_CHASE_FROM || '18:00', close: c.SHOP_CLOSE || '19:00', morning: c.MORNING_DUE || '09:00' };
     if (can('manage')) h += '<form class="box hours-box" data-form="hoursSave"><h3>' + icon('clock') + ' เวลาทำการและการส่ง</h3><div class="hours-grid">' +
       [['SHOP_OPEN', 'ร้านเปิด', H.open], ['DELIVERY_LAST_ORDER', 'ออเดอร์ส่งด่วนสุดท้าย', H.last], ['PAY_CHASE_FROM', 'เริ่มตามเงิน', H.pay], ['SHOP_CLOSE', 'ร้านปิด (รับเองได้ถึง)', H.close], ['MORNING_DUE', 'เที่ยวแรกถึงลูกค้าก่อน', H.morning]].map(function (x) { return '<label class="field"><span>' + x[1] + '</span><input type="time" name="' + x[0] + '" value="' + esc(x[2]) + '" data-old="' + esc(x[2]) + '" required></label>'; }).join('') +
       [['DELIVERY_TARGET_MIN', 'เป้าส่งถึง (นาที)', c.DELIVERY_TARGET_MIN || 60], ['PREP_MIN', 'เวลาจัดของ (นาที)', c.PREP_MIN === undefined ? 15 : c.PREP_MIN], ['RIDE_KMH', 'ความเร็วรถเฉลี่ย (กม./ชม.)', c.RIDE_KMH || 20], ['STOP_MIN', 'จอดส่งจุดละ (นาที)', c.STOP_MIN || 10]].map(function (x) { return '<label class="field"><span>' + x[1] + '</span><input type="number" min="0" max="240" name="' + x[0] + '" value="' + esc(x[2]) + '" data-old="' + esc(x[2]) + '" inputmode="numeric"></label>'; }).join('') + '</div>' +
-      '<label class="chk"><input type="checkbox" name="AUTO_ACCEPT"' + (c.AUTO_ACCEPT !== false ? ' checked' : '') + ' data-old="' + (c.AUTO_ACCEPT !== false ? '1' : '') + '"><span>รับออเดอร์อัตโนมัติในเวลาทำการ (พนักงานเปิดบิลได้ทันที)</span></label><button class="btn blue" type="submit">บันทึกเวลา</button></form>';
+      '<label class="chk"><input type="checkbox" name="AUTO_ACCEPT"' + (c.AUTO_ACCEPT !== false ? ' checked' : '') + ' data-old="' + (c.AUTO_ACCEPT !== false ? '1' : '') + '"><span>รับออเดอร์อัตโนมัติในเวลาทำการ (พนักงานเปิดบิลได้ทันที)</span></label>' +
+      '<label class="chk"><input type="checkbox" name="PUSH_OUT"' + (c.PUSH_OUT ? ' checked' : '') + ' data-old="' + (c.PUSH_OUT ? '1' : '') + '"><span>ส่งข้อความเวลาถึงให้ลูกค้าตอนออกรถ (ใช้โควตา LINE 1 ข้อความต่อออเดอร์ ไม่ติ๊ก = ลูกค้าดูเวลาถึงในแอป)</span></label><button class="btn blue" type="submit">บันทึกเวลา</button></form>';
     h += '<div class="box"><h3>ทดสอบงานตั้งเวลา (ไม่ต้องรอเวลาจริง)</h3>' + jobLine('reminders', H.pay + ' ตามเงินบิลค้างจ่าย', 'ส่งเตือนตอนนี้') + jobLine('standing', '18:00 ถามสั่งประจำ', 'ส่งคำถามตอนนี้') + jobLine('summary', H.close + ' สรุปยอดให้ผู้จัดการ', 'ส่งสรุปตอนนี้') + jobLine('winback', '10:00 เตือนซื้อซ้ำตามรอบของลูกค้า (เปิดที่ WINBACK_ENABLED)', 'ส่งตอนนี้') +
       (c.EVENING_ENABLED ? jobLine('evening', (c.EVENING ? c.EVENING.cutoff : '16:00') + ' รอบเย็น: เลื่อนออเดอร์ที่ยังไม่จ่ายเป็นคืนถัดไป', 'ตรวจตอนนี้') : '') + jobLine('archive', 'วันที่ 1 ของเดือน: ย้ายออเดอร์ที่จบแล้วเก่ากว่า ' + (c.ARCHIVE_DAYS || 120) + ' วัน ไปแท็บ OrdersArchive', 'ย้ายตอนนี้') +
-      jobLine('smartRotate', '00:00 เปลี่ยนชุด Smart Set วันนี้ (สุ่มใหม่ทันที)', 'สุ่มตอนนี้') + jobLine('pointsRelease', '00:00 ปล่อยแต้มที่พักครบ ' + d.cfg.QUALIFY_HOLD_DAYS + ' วัน', 'ปล่อยตอนนี้') + jobLine('magnetRemind', 'เตือนลูกค้าใหม่ที่ยังไม่ใช้ Magnet (เปิดที่ PUSH_EVENTS: magnetremind)', 'ส่งตอนนี้') +
+      jobLine('smartRotate', 'ราว 00:05 เปลี่ยนชุด Smart Set วันนี้ (สุ่มใหม่ทันที)', 'สุ่มตอนนี้') + jobLine('pointsRelease', 'ราว 00:05 ปล่อยแต้มที่พักครบ ' + d.cfg.QUALIFY_HOLD_DAYS + ' วัน', 'ปล่อยตอนนี้') + jobLine('magnetRemind', 'เตือนลูกค้าใหม่ที่ยังไม่ใช้ Magnet (เปิดที่ PUSH_EVENTS: magnetremind)', 'ส่งตอนนี้') +
       jobLine('stock', (d.cfg.STOCK_REMIND || '19:30') + ' เตือนอัปโหลดไฟล์สต็อกปิดร้าน', 'ตรวจตอนนี้') + jobLine('stockCalib', 'คำนวณ buffer สต็อกใหม่ (หลังอัปโหลดไฟล์ปิดร้าน)', 'คำนวณตอนนี้') + jobLine('areaRetag', 'ตรวจพื้นที่ส่งของทุกที่อยู่ใหม่ (หลังแก้เส้นเขต/แถบขอบ)', 'ตรวจตอนนี้') +
       (A.jobRes ? '<div class="alert ' + (A.jobRes.sent || A.jobRes.released || A.jobRes.changed || A.jobRes.products || A.jobRes.picks || A.jobRes.skus ? 'ok' : 'warn') + '"><b>ผล: ' + esc(jobText(A.jobRes)) + '</b></div>' : '') + '</div>';
     h += areaTools(d) + uatBox(d);
@@ -783,7 +797,7 @@
         (mg ? '<div class="field" style="margin-top:10px;max-width:420px"><label>สินค้าที่ใช้สิทธิ์ได้</label><select data-chg="admCfgSel" data-k="SMART_SCOPE"><option value="POOL"' + (st.scope !== 'FEATURED' ? ' selected' : '') + '>ทุกสินค้าที่ติ๊ก Smart (แนะนำ)</option><option value="FEATURED"' + (st.scope === 'FEATURED' ? ' selected' : '') + '>เฉพาะ 6 รายการของวัน</option></select></div>' : '<div class="row"><span>สินค้าที่ใช้สิทธิ์ได้</span><span>' + esc(st.scope) + '</span></div>') +
         statCards([['บิลที่ใช้ Smart Set', fmt(u.smart || 0), 'Attach ' + (u.attach || 0) + '% จาก ' + fmt(u.orders || 0) + ' บิล'], ['ส่วนลด Smart Set', baht(u.smartDisc || 0), fmt(u.smartUnits || 0) + ' ชิ้น ในช่วงวันที่']]) + '</div>';
       h += '<div class="box"><div class="section-heading"><h3>ชุดวันนี้ (' + esc(C.thDate(today())) + ')</h3>' + (mg ? '<button class="btn sm" data-a="adm" data-op="runJob" data-job="smartRotate" data-confirm="1">สุ่มชุดวันนี้ใหม่</button>' : '') + '</div>' +
-        ((P.today || []).length ? '<div class="tblw"><table><thead><tr><th>หมวด</th><th>สินค้า</th><th class="r">ราคาเต็ม</th><th class="r">ราคาลด</th><th>เลือกโดย</th></tr></thead><tbody>' + P.today.map(function (x) { return '<tr><td>' + esc(catTh[x.cat] || x.cat) + '</td><td>' + esc(x.name) + ' <small class="mono hint">' + esc(x.sku) + '</small></td><td class="r">' + baht(x.full) + '</td><td class="r">' + baht(C.promoPrice(x.full, st.smartPct)) + '</td><td>' + esc(x.by || 'ระบบ') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">ยังไม่มีชุดของวันนี้ ติ๊กสินค้าด้านล่าง แล้วกด "สุ่มชุดวันนี้ใหม่"</div>') + '<div class="hint">ระบบเปลี่ยนชุดทุก 00:00 หมวดละ 1 รายการ</div></div>';
+        ((P.today || []).length ? '<div class="tblw"><table><thead><tr><th>หมวด</th><th>สินค้า</th><th class="r">ราคาเต็ม</th><th class="r">ราคาลด</th><th>เลือกโดย</th></tr></thead><tbody>' + P.today.map(function (x) { return '<tr><td>' + esc(catTh[x.cat] || x.cat) + '</td><td>' + esc(x.name) + ' <small class="mono hint">' + esc(x.sku) + '</small></td><td class="r">' + baht(x.full) + '</td><td class="r">' + baht(C.promoPrice(x.full, st.smartPct)) + '</td><td>' + esc(x.by || 'ระบบ') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="empty">ยังไม่มีชุดของวันนี้ ติ๊กสินค้าด้านล่าง แล้วกด "สุ่มชุดวันนี้ใหม่"</div>') + '<div class="hint">ระบบเปลี่ยนชุดทุกคืน ราว 00:05 หมวดละ 1 รายการ</div></div>';
       if ((P.tomorrow || []).length || mg) {
         h += '<div class="box"><h3>ชุดพรุ่งนี้ (' + esc(C.thDate(P.tomorrowDate)) + ')</h3><div class="tblw"><table class="lock-table"><thead><tr><th>หมวด</th><th>ระบบจะเลือก</th>' + (mg ? '<th>ล็อกรายการ</th>' : '') + '</tr></thead><tbody>' + (st.cats || []).map(function (cat) {
           var pick = (P.tomorrow || []).filter(function (x) { return x.cat === cat; })[0], opts = (P.pool || []).filter(function (p) { return p.smart && p.promoCat === cat && p.okSmart; });
@@ -1078,8 +1092,8 @@
   function noteCounts(c, fromLoad) {
     if (!c) return;
     var prev = A.counts;
-    if (prev && c.latestOrder && c.latestOrder !== A.lastLatest && c.latestAt > (prev.latestAt || '') && c.newOrders > 0) {
-      A.alert += Math.max(1, c.newOrders - (prev.newOrders || 0)); beep();
+    if (prev && c.latestOrder && c.latestOrder !== A.lastLatest && c.latestAt > (prev.latestAt || '')) { // 3.1.2: เตือนทุกออเดอร์ใหม่ (รวมที่ระบบรับอัตโนมัติ)
+      A.alert += Math.max(1, (c.todayOrders || 0) - (prev.todayOrders || 0), c.newOrders - (prev.newOrders || 0)); beep();
       try { if (navigator.vibrate) navigator.vibrate([180, 90, 180]); } catch (e) { }
     }
     A.lastLatest = c.latestOrder; A.counts = c;
@@ -1087,7 +1101,8 @@
   }
   function startPoll() {
     if (A.timer) return;
-    var sec = Math.max(10, Number((S.cat && S.cat.cfg.POLL_SEC) || 15));
+    var sec = Math.max(10, Number((S.cat && S.cat.cfg.POLL_SEC) || 15)), cn = navigator.connection || {};
+    if (/^(slow-2g|2g|3g)$/.test(String(cn.effectiveType || '')) || cn.saveData) sec = Math.max(sec, 30); // 3.1.2: เน็ตช้า → เช็กห่างขึ้น ไม่แย่งเน็ตกับงานอื่น
     A.timer = setInterval(poll, sec * 1000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
   }
@@ -1172,7 +1187,9 @@
     var ids = el.dataset.ids.split(',').filter(function (id) { return !skip[id]; });
     if (!ids.length) { toast('เลือกอย่างน้อย 1 จุด'); return; }
     var cfg = (A.d[key('route')] && A.d[key('route')].cfg) || {}, etas = trip ? etaFor(trip, cfg) : {};
-    run('กำลังบันทึกออกรอบ...', api('deliveryOut', { ids: ids, wave: trip ? trip.slot : '', bike: trip ? trip.bike : '', rider: A.riderOf[el.dataset.no] || '', stops: trip ? trip.stops.length : ids.length, etas: etas }), function (r) { return after(r, 'ออกรอบ ' + r.trip + ' แล้ว ' + r.count + ' จุด · แจ้งเวลาถึงโดยประมาณให้ลูกค้าแล้ว'); });
+    A.forceOut = A.forceOut || {}; var bk = trip ? trip.bike : '', force = !!bk && Date.now() - (A.forceOut[bk] || 0) < 60000; // 3.1.2: รถยังไม่กดกลับ → กดอีกครั้งปิดเที่ยวเดิม
+    run('กำลังบันทึกออกรอบ...', api('deliveryOut', { ids: ids, wave: trip ? trip.slot : '', bike: bk, rider: A.riderOf[el.dataset.no] || '', stops: trip ? trip.stops.length : ids.length, etas: etas, closePrev: force }).catch(function (e) { if (e.code === 'BIKEOUT' && bk) A.forceOut[bk] = Date.now(); throw e; }),
+      function (r) { if (bk) delete A.forceOut[bk]; return after(r, 'ออกรอบ ' + r.trip + ' แล้ว ' + r.count + ' จุด' + (r.notified > 0 ? ' แจ้งเวลาถึงในแชตแล้ว ' + r.notified + ' ราย' : r.pushOut ? '' : ' ลูกค้าดูเวลาถึงได้ในแอป')); });
   };
   ACT.admDispatchOut = function (el) {
     var tr = (A.trips || []).filter(function (t) { return String(t.no) === String(el.dataset.no); })[0]; if (!tr) return;
@@ -1180,9 +1197,26 @@
     if (!ids.length) { toast('เลือกอย่างน้อย 1 จุด'); return; }
     var notReady = tr.stops.filter(function (s) { return ids.indexOf(s.id) >= 0 && !s.ready; }).length;
     if (notReady && !el.dataset.sure) { el.dataset.sure = '1'; el.dataset.label = el.innerHTML; el.textContent = 'ยังไม่เปิดบิล ' + notReady + ' จุด กดอีกครั้งเพื่อออกรถ'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.innerHTML = el.dataset.label; } }, 4000); return; }
-    var legs = (A.trips || []).filter(function (t) { return t !== tr && t.stops.some(function (s) { return s.legs > 1 && ids.indexOf(s.id) >= 0; }); }); // บิลหนัก: ออกพร้อมกันทุกเที่ยวของบิลนี้
-    var calls = [api('deliveryOut', { ids: ids, bike: tr.bike, stops: ids.length })].concat(legs.map(function (t) { return api('deliveryOut', { ids: t.stops.map(function (s) { return s.id; }), bike: t.bike, stops: t.stops.length, note: 'บิลหนัก (เที่ยวคู่)' }); }));
-    run('กำลังบันทึกออกรถ...', Promise.all(calls), function (rs) { var r0 = rs[0] || {}; return after(r0, 'ออกรถ ' + r0.bike + ' แล้ว ' + r0.count + ' จุด กลับประมาณ ' + (r0.back || '-') + ' น. แจ้งเวลาถึงลูกค้าแล้ว'); });
+    /* 3.1.2 บิลหนัก: ทุกเที่ยวของบิลเดียวกันออกพร้อมกัน แยกตามรถ (รถคันเดียวส่งครั้งเดียว รวมรอบที่ต้องวิ่งซ้ำ) */
+    var heavy = tr.stops.filter(function (s) { return s.legs > 1 && ids.indexOf(s.id) >= 0; }).map(function (s) { return s.id; });
+    var group = heavy.length ? (A.trips || []).filter(function (t) { return t === tr || t.stops.some(function (s) { return s.legs > 1 && heavy.indexOf(s.id) >= 0; }); }) : [tr];
+    var byBike = {}, order = [];
+    group.forEach(function (t) {
+      var b = byBike[t.bike]; if (!b) { b = byBike[t.bike] = { bike: t.bike, ids: [], kg: 0, rounds: 0 }; order.push(t.bike); }
+      (t === tr ? ids : t.stops.map(function (s) { return s.id; })).forEach(function (id) { if (b.ids.indexOf(id) < 0) b.ids.push(id); });
+      b.kg += Number(t.kg) || 0; b.rounds++;
+    });
+    var busyB = order.filter(function (bk) { var st = (A.bikes || []).filter(function (x) { return x.bike === bk; })[0]; return st && !st.free; });
+    A.forceOut = A.forceOut || {}; var forced = el.dataset.force === '1' || order.some(function (bk) { return Date.now() - (A.forceOut[bk] || 0) < 60000; }); // หลังบ้านเพิ่งบอกว่ารถยังไม่กลับ แล้วกดอีกครั้ง = ยืนยันแล้ว
+    if (busyB.length && !el.dataset.sure && !forced) { var bs = (A.bikes || []).filter(function (x) { return busyB.indexOf(x.bike) >= 0; }); el.dataset.sure = '1'; el.dataset.label = el.innerHTML; el.textContent = 'รถ ' + busyB.join(', ') + ' ยังไม่กลับ (ประมาณ ' + bs.map(function (x) { return x.freeAt; }).join(', ') + ' น.) ถ้ากลับแล้ว กดอีกครั้ง'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.innerHTML = el.dataset.label; } }, 5000); return; }
+    var closePrev = !!busyB.length || forced;
+    var calls = order.map(function (bk) { var b = byBike[bk]; return api('deliveryOut', { ids: b.ids, bike: b.bike, stops: b.ids.length, kg: heavy.length ? Math.round(b.kg * 10) / 10 : undefined, rounds: b.rounds, closePrev: closePrev, note: heavy.length ? 'บิลหนัก' + (order.length > 1 ? ' (ออกพร้อมกัน ' + order.length + ' คัน)' : '') + (b.rounds > 1 ? ' วิ่ง ' + b.rounds + ' รอบ' : '') : '' }).catch(function (e) { if (e.code === 'BIKEOUT') { el.dataset.force = '1'; A.forceOut[b.bike] = Date.now(); } throw e; }); }); // BIKEOUT = หลังบ้านเห็นว่ารถยังไม่กดกลับ (ไม่ใช้ BUSY เพราะ BUSY หน้าเว็บลองใหม่เอง) → กดอีกครั้งปิดเที่ยวเดิมให้
+    run('กำลังบันทึกออกรถ...', Promise.all(calls), function (rs) {
+      order.forEach(function (bk) { delete A.forceOut[bk]; });
+      var r0 = rs[0] || {}, n = rs.reduce(function (s, r) { return s + (r.notified || 0); }, 0);
+      var tell = n > 0 ? ' แจ้งเวลาถึงในแชตแล้ว ' + n + ' ราย' : r0.pushOut ? '' : ' ลูกค้าดูเวลาถึงได้ในแอป';
+      return after(r0, 'ออกรถ ' + rs.map(function (r) { return r.bike; }).join(' และ ') + ' แล้ว ' + rs.reduce(function (s, r) { return s + (r.count || 0); }, 0) + ' จุด กลับประมาณ ' + (r0.back || '-') + ' น.' + tell);
+    });
   };
   ACT.admLink = function (el) {
     if (el.dataset.confirm && !el.dataset.sure) { el.dataset.sure = '1'; el.dataset.label = el.textContent; el.textContent = 'กดอีกครั้งเพื่อยืนยัน'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.textContent = el.dataset.label; } }, 4000); return; }
@@ -1348,7 +1382,13 @@
   };
   FORMS.setPilot = function (f) { run('กำลังบันทึก...', api('setPilot', { id: new FormData(f).get('id'), on: true }), function () { return after(null, 'ให้สิทธิ์ชวนเพื่อนแล้ว'); }); };
   FORMS.createSign = function (f) { var fd = new FormData(f); run('กำลังสร้าง...', api('createSign', { name: fd.get('name'), type: fd.get('type'), area: fd.get('area') }), function (r) { return after(r, 'สร้างป้าย ' + r.id + ' แล้ว'); }); };
-  FORMS.broadcast = function (f) { var fd = new FormData(f); run('กำลังส่ง...', api('broadcast', { segment: fd.get('segment'), template: fd.get('template') }), function (r) { return after(r, 'ส่งถึง ' + r.sent + ' คน'); }); };
+  FORMS.broadcast = function (f) { // 3.1.2: กดยืนยันก่อนส่ง (ใช้โควตาทีเดียวทั้งกลุ่ม)
+    var fd = new FormData(f), btn = f.querySelector('button[type=submit]'), sel = f.querySelector('select[name=segment]'), tpl = f.querySelector('select[name=template]');
+    var label = sel ? sel.options[sel.selectedIndex].textContent : '', n = (/\((\d[\d,]*) คน\)/.exec(label) || [0, '?'])[1], key = fd.get('segment') + '|' + fd.get('template');
+    if (f.dataset.sure !== key) { f.dataset.sure = key; if (btn) btn.textContent = 'ยืนยันส่ง "' + (tpl ? tpl.options[tpl.selectedIndex].textContent : '') + '" ถึง ' + n + ' คน (ใช้โควตา ' + n + ' ข้อความ)'; setTimeout(function () { if (f.isConnected && f.dataset.sure === key) { delete f.dataset.sure; if (btn) btn.textContent = 'ส่ง'; } }, 8000); return; }
+    delete f.dataset.sure;
+    run('กำลังส่ง...', api('broadcast', { segment: fd.get('segment'), template: fd.get('template') }), function (r) { return after(r, 'ส่งถึง ' + r.sent + ' คน'); });
+  };
   FORMS.counterBill = function (f) { var fd = new FormData(f); run('กำลังบันทึก...', api('counterBill', { memberId: fd.get('memberId'), txn: fd.get('txn'), amount: fd.get('amount') }), function () { return after(null, 'บันทึกแล้ว'); }); };
   FORMS.payRecord = function (f) { var fd = new FormData(f); run('กำลังบันทึก...', api('payRecord', { id: f.dataset.id, amount: String(fd.get('amount')).replace(/,/g, ''), method: fd.get('method'), note: fd.get('note') }), function (r) { A.open['rec-' + f.dataset.id] = false; return after(r, r.paid ? 'ชำระครบ ปิดบิลแล้ว' : 'บันทึกแล้ว'); }); };
   FORMS.creditRefund = function (f) { var fd = new FormData(f); run('กำลังบันทึก...', api('creditRefund', { memberId: f.dataset.member, orderId: f.dataset.order, amount: fd.get('amount'), note: fd.get('note') }), function () { A.open['ref-' + f.dataset.order] = false; return after(null, 'บันทึกการคืนเงินแล้ว'); }); };
@@ -1454,12 +1494,24 @@
     });
   };
   FORMS.hoursSave = function (f) {
-    var ch = [];
-    Array.prototype.forEach.call(f.elements, function (el) { if (!el.name) return; var v = el.type === 'checkbox' ? (el.checked ? 'TRUE' : 'FALSE') : String(el.value || '').trim(), old = el.type === 'checkbox' ? (el.dataset.old ? 'TRUE' : 'FALSE') : el.dataset.old; if (v !== old) ch.push([el.name, v]); });
-    if (!ch.length) { toast('ยังไม่ได้เปลี่ยนค่า'); return; }
-    var p = Promise.resolve(); ch.forEach(function (x) { p = p.then(function () { return api('configSet', { key: x[0], value: x[1] }); }); });
-    run('กำลังบันทึก ' + ch.length + ' ค่า...', p.then(function () { return api('catalog'); }), function (c) { S.cat = c; return after(null, 'บันทึกเวลาแล้ว มีผลทันที'); });
+    var ch = {}, n = 0, all = {};
+    Array.prototype.forEach.call(f.elements, function (el) { if (!el.name) return; var v = el.type === 'checkbox' ? (el.checked ? 'TRUE' : 'FALSE') : String(el.value || '').trim(), old = el.type === 'checkbox' ? (el.dataset.old ? 'TRUE' : 'FALSE') : el.dataset.old; all[el.name] = v; if (v !== old) { ch[el.name] = v; n++; } });
+    if (!n) { toast('ยังไม่ได้เปลี่ยนค่า'); return; }
+    var bad = hoursBad(all); if (bad) { toast(bad, 5000); return; } // 3.1.2: ตรวจลำดับเวลาก่อนบันทึก
+    run('กำลังบันทึก ' + n + ' ค่า...', api('hoursSave', { values: ch }).then(function () { return api('catalog'); }), function (c) { S.cat = c; return after(null, 'บันทึกเวลาแล้ว มีผลทันที'); });
   };
+  function hoursBad(v) {
+    var K = ['SHOP_OPEN', 'DELIVERY_LAST_ORDER', 'PAY_CHASE_FROM', 'SHOP_CLOSE', 'MORNING_DUE'];
+    var t = function (k) { var m = /^(\d{1,2})[:.](\d{2})$/.exec(String(v[k] || '')); return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? ('0' + m[1]).slice(-2) + ':' + m[2] : null; };
+    if (K.some(function (k) { return v[k] !== undefined && t(k) === null; })) return 'เวลาไม่ถูกต้อง ใช้รูปแบบ 17:00';
+    var o = t('SHOP_OPEN'), l = t('DELIVERY_LAST_ORDER'), p = t('PAY_CHASE_FROM'), c = t('SHOP_CLOSE'), md = t('MORNING_DUE');
+    if (o && l && !(o < l)) return 'เวลาปิดรับส่งด่วน (' + l + ') ต้องหลังร้านเปิด (' + o + ')';
+    if (l && c && !(l <= c)) return 'เวลาปิดรับส่งด่วน (' + l + ') ต้องไม่เกินเวลาร้านปิด (' + c + ')';
+    if (p && o && c && !(o < p && p <= c)) return 'เวลาเริ่มตามเงิน (' + p + ') ต้องอยู่ระหว่างร้านเปิดถึงร้านปิด (' + o + ' ถึง ' + c + ')';
+    if (md && o && !(md > o)) return 'เวลาเที่ยวแรกถึงลูกค้า (' + md + ') ต้องหลังร้านเปิด (' + o + ')';
+    var tg = Number(v.DELIVERY_TARGET_MIN); if (v.DELIVERY_TARGET_MIN !== undefined && !(tg >= 15 && tg <= 240)) return 'เป้าส่งถึงต้องอยู่ระหว่าง 15 ถึง 240 นาที';
+    return '';
+  }
   function cfgSet(k, v, msg) { run('กำลังบันทึก...', api('configSet', { key: k, value: v }), function () { return api('catalog').then(function (c) { S.cat = c; return after(null, msg || 'บันทึกแล้ว'); }); }); }
   function v3change(t, c) {
     if (c === 'admCfg') { cfgSet(t.dataset.k, t.checked ? 'TRUE' : 'FALSE', (t.checked ? 'เปิด ' : 'ปิด ') + t.dataset.k); return true; }

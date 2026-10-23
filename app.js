@@ -6,7 +6,7 @@
 (function () {
   'use strict';
   var CFG = window.APP_CONFIG || {};
-  var APP_VERSION = '3.1.1';
+  var APP_VERSION = '3.1.2';
 
   /* ===== คำนวณตะกร้า (ใช้ร่วมกันทั้งหลังบ้านและหน้า MINI App — แก้ที่เดียวทั้งสองฝั่ง) ===== */
   function daysBetween(a, b) {
@@ -487,6 +487,7 @@
   function thDate(d) { var M = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']; d = String(d || ''); return d.length >= 10 ? Number(d.slice(8, 10)) + ' ' + M[Number(d.slice(5, 7)) - 1] : d; }
   function dayName(d) { return ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสฯ', 'ศุกร์', 'เสาร์'][new Date(String(d).slice(0, 10) + 'T00:00:00Z').getUTCDay()]; }
   function isStaff() { return !!(S.me && S.me.staff); }
+  function paramsOf(search) { var o = {}; (function m(q, d) { q = String(q || ''); q = q.indexOf('?') >= 0 ? q.slice(q.indexOf('?') + 1) : q; new URLSearchParams(q).forEach(function (v, k) { if (k === 'liff.state' || k === 'liffRedirectUri') { if (d < 3) m(v, d + 1); return; } if (/^(code|state|liffClientId)$/.test(k)) return; if (!o[k]) o[k] = v; }); })(search, 0); return o; }
   function readParams() {
     var raw = {}, out = {};
     new URLSearchParams(location.search).forEach(function (v, k) { raw[k] = v; });
@@ -496,10 +497,18 @@
       if (callback && (k === 'code' || k === 'state')) return;
       out[k] = raw[k];
     });
-    function merge(u) { u = String(u || ''); var q = u.indexOf('?') >= 0 ? u.slice(u.indexOf('?') + 1) : ''; new URLSearchParams(q).forEach(function (v, k) { if (!out[k]) out[k] = v; }); }
+    function merge(u, d) { u = String(u || ''); var q = u.indexOf('?') >= 0 ? u.slice(u.indexOf('?') + 1) : ''; new URLSearchParams(q).forEach(function (v, k) { if (k === 'liff.state') { if ((d || 0) < 3) merge(v, (d || 0) + 1); return; } if (/^(code|state|liffClientId|liffRedirectUri)$/.test(k)) return; if (!out[k]) out[k] = v; }); } // 3.1.2: liff.state ซ้อนใน liffRedirectUri ก็อ่านได้
     merge(raw['liff.state']);      // เปิดครั้งแรกจาก LINE
     merge(raw.liffRedirectUri);    // หน้าที่ตั้งใจเปิดก่อนไปล็อกอิน
     return out;
+  }
+  /* 3.1.2 อ่านพิกัดจากข้อความที่วาง: "13.79, 100.64" · ลิงก์ที่มี @lat,lng · q=/ll=/query= · !3d..!4d.. (ลิงก์ย่อ maps.app.goo.gl ยังต้องให้หลังบ้านเปิดให้) */
+  function localLatLng(u) {
+    var s = String(u || '').trim(), m = /^(-?\d{1,2}\.\d+)\s*[,\s]\s*(-?\d{1,3}\.\d+)$/.exec(s) || /@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/.exec(s) ||
+      /[?&](?:q|query|ll|center|destination)=(-?\d{1,2}\.\d+)(?:,|%2C)\s*(-?\d{1,3}\.\d+)/i.exec(s) || /!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/.exec(s);
+    if (!m) return null;
+    var lat = Number(m[1]), lng = Number(m[2]);
+    return lat > 4 && lat < 22 && lng > 96 && lng < 107 ? [lat, lng] : null; // นอกประเทศไทย → ให้หลังบ้านตรวจ
   }
   /* ล้างพารามิเตอร์ของการล็อกอินออกจากแถบที่อยู่ เพื่อให้กด Bookmark แล้วเปิดซ้ำได้ */
   function cleanUrl() {
@@ -523,7 +532,7 @@
   function perfAdd(action, ms, sms, ok) { PERF.push({ a: action, ms: ms, sms: sms || 0, ok: ok, t: Date.now() }); if (PERF.length > 300) PERF.shift(); }
   function api(action, data, opt) {
     opt = opt || {};
-    var isRead = !!READS[action], body = Object.assign({ action: action }, data || {});
+    var isRead = !!READS[action], body = Object.assign({ action: action, cv: APP_VERSION }, data || {}); // cv: หลังบ้านจดว่ามีคนใช้หน้าเว็บเวอร์ชันไหน (3.1.2)
     if (!isRead) body.rid = body.rid || rid();
     if (S.asRole) body.asRole = S.asRole; // ผู้จัดการทดสอบบทบาทอื่น (หลังบ้านลดสิทธิ์ให้เท่านั้น)
     var tries = opt.tries || (isRead ? 4 : 3), t0 = Date.now();
@@ -1297,7 +1306,8 @@
       var h = top('บิลของฉัน', 'ติดตามออเดอร์และการชำระเงิน', true) + '<div class="wrap">' + (due.length ? '<div class="alert warn">มี ' + due.length + ' บิลรอชำระ รวม ' + baht(due.reduce(function (s, o) { return s + o.pay.remain; }, 0)) + ' · แตะบิลเพื่อสแกน QR และแนบสลิป</div>' : '');
       h += r.orders.length ? r.orders.map(function (o) {
         var amt = o.status === 'billed' ? o.pay.remain : (o.actual || o.est);
-        return '<button class="box bill-card" data-a="go" data-p="bill" data-id="' + esc(o.id) + '"><div class="bill-card-head"><b class="mono">' + esc(o.id) + '</b>' + statusPill(o.status) + '</div><div class="hint">' + esc(o.created) + (o.txn ? ' · บิล ' + esc(o.txn) : '') + (o.delivery === 'out' ? ' · <b>กำลังนำส่ง</b>' : '') + (o.evening ? ' · รอบเย็น' + esc(evDayText(o.deliverDate)) : '') + '</div>' + (o.status === 'billed' ? payPill(o.pay) : '') + (o.evening && o.payBy && /new|approved/.test(o.status) && o.pay.remain > 0 ? '<span class="pill new">โอนก่อน ' + esc(o.payBy.slice(11, 16)) + ' น.</span>' : '') +
+        return '<button class="box bill-card" data-a="go" data-p="bill" data-id="' + esc(o.id) + '"><div class="bill-card-head"><b class="mono">' + esc(o.id) + '</b>' + statusPill(o.status) + '</div><div class="hint">' + esc(o.created) + (o.txn ? ' · บิล ' + esc(o.txn) : '') + (o.evening ? ' · รอบเย็น' + esc(evDayText(o.deliverDate)) : '') + '</div>' + (o.status === 'billed' ? payPill(o.pay) : '') + (o.evening && o.payBy && /new|approved/.test(o.status) && o.pay.remain > 0 ? '<span class="pill new">โอนก่อน ' + esc(o.payBy.slice(11, 16)) + ' น.</span>' : '') +
+          (whenShort(o) ? '<div class="bill-when">' + icon(o.mode === 'shop' ? 'shop' : 'truck') + '<span>' + whenShort(o) + '</span></div>' : '') +
           '<div class="bill-card-foot"><div><small>' + (o.status === 'billed' ? (o.pay.status === 'review' ? 'แจ้งโอนแล้ว รอร้านตรวจ' : 'ยอดที่ต้องโอน') : o.txn ? 'ยอดตามบิล' : 'ยอดประมาณ') + '</small><strong class="price">' + baht(o.status === 'billed' && o.pay.status === 'review' ? o.pay.received : amt) + '</strong></div><span class="bill-link">' + (o.status === 'billed' && o.pay.remain > 0 ? 'ชำระเงิน' : 'ดูรายละเอียด') + ' →</span></div></button>';
       }).join('') : '<div class="empty">' + icon('bill') + '<b>ยังไม่มีออเดอร์</b><span>เมื่อสั่งสินค้าแล้ว ติดตามบิลได้ที่นี่</span></div><button class="btn pri block" data-a="go" data-p="catalog">เริ่มเลือกสินค้า</button>';
       render(h + '</div>');
@@ -1315,6 +1325,13 @@
       return '<div class="row"><span>' + esc(x.at.slice(5, 16).replace('-', '/')) + (x.method === 'cash' ? ' · เงินสด' : '') + (x.hasSlip ? ' · มีสลิป' : '') + (x.status === 'rejected' && x.note ? '<br><small class="hint">' + esc(x.note) + '</small>' : '') + '</span><span>' + baht(x.amount) + ' ' + st + '</span></div>';
     }).join('') + '</details>';
     return h + '</section>';
+  }
+  /* 3.1.2 รายการบิล: บอกเวลาส่ง / เวลามารับ ของออเดอร์ที่ยังไม่ถึงมือลูกค้า */
+  function whenShort(o) {
+    if (o.status === 'cancelled' || o.delivery === 'done') return '';
+    if (o.mode === 'pickup') return 'รับที่จุด ' + esc(o.pickup) + ' รอบ ' + esc(S.cat.cfg.CONDO_TIME);
+    if (o.mode === 'shop') { var p = String(o.promiseAt || ''); return o.status === 'paid' ? '' : 'รับเองที่ร้าน' + (p && /new|approved|billed/.test(o.status) ? ' มารับได้ตั้งแต่ ' + esc(p.slice(11, 16)) + ' น.' + (p.slice(0, 10) !== todayStr() ? ' ' + thDate(p.slice(0, 10)) : '') : ''); }
+    return billWhen(o);
   }
   /* หน้าบิล: ส่งเมื่อไร (ตามที่ร้านแจ้งตอนสั่ง / ตอนรถออก) */
   function billWhen(o) {
@@ -1372,7 +1389,15 @@
   function pageInvite() {
     loadPage('invite', 'invite', {}, function (r) {
       var cfg = S.cat.cfg, h = top('ชวนเพื่อน', '', true) + '<div class="wrap">';
-      if (!r.eligible) { render(h + '<div class="alert info">ตอนนี้สิทธิ์ชวนเพื่อนเปิดเฉพาะลูกค้ากลุ่มนำร่องที่ร้านเชิญ</div></div>'); return; }
+      if (!r.eligible) { // 3.1.2: ไม่ใช่ทางตัน บอกเหตุผล + ยังส่งลิงก์ LINE ร้านให้เพื่อนได้ (ไม่ได้แต้มผู้แนะนำ)
+        var sl = r.shareLink || '';
+        render(h + '<div class="alert info">' + (r.why === 'approval' ? 'ชวนเพื่อนรับแต้มได้หลังร้านยืนยันสมาชิกของคุณ (ภายใน 1 วันทำการ)' : 'สิทธิ์ชวนเพื่อนรับแต้มตอนนี้เปิดให้ร้านค้ากลุ่มนำร่องที่ร้านเชิญ') + '</div>' +
+          (sl ? '<div class="box qr"><b>ชวนเพื่อนมาสั่งที่ร้านได้เลย</b><div class="hint">ส่งลิงก์ LINE ของร้านให้เพื่อน เพื่อนแอดแล้วสั่งของได้ทันที (ลิงก์นี้ไม่ได้รับแต้มผู้แนะนำ)</div><div class="code">' + qrSvg(sl) + '</div>' +
+            '<div class="copy"><input readonly value="' + esc(sl) + '" aria-label="ลิงก์ LINE ร้าน"><button class="btn sm" data-a="copy" data-t="' + esc(sl) + '">คัดลอก</button></div>' +
+            (canShare() ? '<button class="btn sm pri" data-a="share" data-t="' + esc(sl) + '">ส่งให้เพื่อนใน LINE</button>' : '') + '</div>' : '') +
+          '<button class="btn block" data-a="go" data-p="catalog">' + icon('bag') + ' ไปสั่งของ</button></div>');
+        return;
+      }
       if (r.reward === 'points') { render(h + inviteV3(r) + '</div>'); return; }
       var full = r.monthCount >= r.limit;
       h += '<div class="box qr">' + (full ? '<div class="alert warn">เดือนนี้ชวนครบ ' + r.limit + ' ร้านแล้ว</div>' : (r.link ? '<div class="code">' + qrSvg(r.link) + '</div>' : '<div class="alert warn">ร้านยังไม่ได้ตั้งค่าลิงก์ชวน</div>')) +
@@ -1556,11 +1581,11 @@
     if (chip) chip.innerHTML = areaChip(P.lat, P.lng); if (co) { co.textContent = pinDist(P.lat, P.lng); co.dataset.ll = P.lat.toFixed(5) + ', ' + P.lng.toFixed(5); } if (ok) ok.disabled = false;
   }
   /* v3.1.1 บอกระยะจากร้าน (ระยะถนนโดยประมาณ = เส้นตรง x 1.3 แบบเดียวกับการคิดเวลาส่ง) แทนพิกัดตัวเลข */
+  function haversineKm(a, b, lat, lng) { var R0 = 6371, r = Math.PI / 180, dLa = (lat - a) * r, dLo = (lng - b) * r, x = Math.sin(dLa / 2) * Math.sin(dLa / 2) + Math.cos(a * r) * Math.cos(lat * r) * Math.sin(dLo / 2) * Math.sin(dLo / 2); return 2 * R0 * Math.asin(Math.min(1, Math.sqrt(x))); }
   function pinDist(lat, lng) {
     var sh = (S.cat.cfg.AREA || {}).shop || [], a = Number(sh[0]), b = Number(sh[1]);
     if (!a || !b || !lat || !lng) return 'ปักหมุดแล้ว';
-    var R0 = 6371, r = Math.PI / 180, dLa = (lat - a) * r, dLo = (lng - b) * r, x = Math.sin(dLa / 2) * Math.sin(dLa / 2) + Math.cos(a * r) * Math.cos(lat * r) * Math.sin(dLo / 2) * Math.sin(dLo / 2);
-    var km = 2 * R0 * Math.asin(Math.min(1, Math.sqrt(x))) * 1.3;
+    var km = haversineKm(a, b, lat, lng) * 1.3;
     return km < 0.1 ? 'ใกล้ร้านมาก' : 'ห่างร้านประมาณ ' + (km < 10 ? (Math.round(km * 10) / 10) : Math.round(km)) + ' กม.';
   }
   function pinGo(lat, lng, src) {
@@ -1853,17 +1878,25 @@
       if (Date.now() - (P.lastQ || 0) < 1200) { toast('รอสักครู่แล้วค้นหาใหม่'); return; } // นโยบาย Nominatim: ไม่เกิน 1 ครั้ง/วินาที
       P.lastQ = Date.now(); P.q = q; busy(true, 'กำลังค้นหา...');
       var A = S.cat.cfg.AREA || {}, sh = A.shop && Number(A.shop[0]) ? A.shop : [13.8008, 100.6458], vb = [Number(sh[1]) - 0.15, Number(sh[0]) + 0.12, Number(sh[1]) + 0.15, Number(sh[0]) - 0.12].join(',');
-      fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=th&accept-language=th&viewbox=' + vb + '&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' }, referrerPolicy: 'strict-origin-when-cross-origin' })
-        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      var look = function (bounded) { // 3.1.2: ค้นรอบร้านก่อน (bounded) ไม่พบค่อยค้นทั้งประเทศ · เรียงใกล้ร้านก่อน + บอกระยะ
+        return fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=th&accept-language=th&viewbox=' + vb + (bounded ? '&bounded=1' : '') + '&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' }, referrerPolicy: 'strict-origin-when-cross-origin' })
+          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+      };
+      look(true).then(function (list) { if (list && list.length) return list; P.far = true; return new Promise(function (res) { setTimeout(res, 1200); }).then(function () { return look(false); }); })
         .then(function (list) {
-          busy(false); P.results = (list || []).map(function (x) { return { name: String(x.display_name || ''), lat: Number(x.lat), lng: Number(x.lon) }; }).filter(function (x) { return x.lat && x.lng; });
+          var near = !P.far; P.far = false;
+          busy(false); P.results = (list || []).map(function (x) { var la = Number(x.lat), ln = Number(x.lon); return { name: String(x.display_name || ''), lat: la, lng: ln, km: la && ln ? haversineKm(Number(sh[0]), Number(sh[1]), la, ln) : 999 }; }).filter(function (x) { return x.lat && x.lng; })
+            .sort(function (a, b) { return a.km - b.km; });
+          if (!near && P.results.length) toast('ไม่พบใกล้ร้าน แสดงผลที่อื่นแทน ตรวจระยะก่อนเลือก', 3500);
           var box = document.getElementById('pin-results');
-          if (box) box.innerHTML = P.results.length ? P.results.map(function (x, i) { return '<button type="button" class="pin-res" data-a="pinUse" data-i="' + i + '">' + icon('pin') + '<span>' + esc(x.name) + '</span></button>'; }).join('') : '<div class="hint">ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น หรือเลื่อนแผนที่เอง</div>';
+          if (box) box.innerHTML = P.results.length ? P.results.map(function (x, i) { return '<button type="button" class="pin-res" data-a="pinUse" data-i="' + i + '">' + icon('pin') + '<span>' + esc(x.name) + (x.km < 999 ? '<small class="hint">ห่างร้านประมาณ ' + (Math.round(x.km * 1.3 * 10) / 10) + ' กม.</small>' : '') + '</span></button>'; }).join('') : '<div class="hint">ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น หรือเลื่อนแผนที่เอง</div>';
         })
         .catch(function () { busy(false); toast('ค้นหาไม่สำเร็จ ลองเลื่อนแผนที่เอง หรือวางลิงก์ Google Maps แทน', 4000); });
     },
     pinLink: function (f) {
       var u = String(new FormData(f).get('url') || '').trim(); if (!u) return;
+      var ll = localLatLng(u); // 3.1.2: พิกัดตัวเลข / ลิงก์ Google Maps แบบยาว อ่านในเครื่องเลย ไม่ต้องรอหลังบ้าน
+      if (ll) { pinGo(ll[0], ll[1], 'link'); toast('ได้ตำแหน่งแล้ว ตรวจหมุดอีกครั้ง', 3000); return; }
       busy(true, 'กำลังอ่านตำแหน่งจากลิงก์...');
       api('expandLink', { url: u }, { tries: 2 }).then(function (r) { busy(false); pinGo(r.lat, r.lng, 'link'); toast('ได้ตำแหน่งจากลิงก์แล้ว ตรวจหมุดอีกครั้ง', 3500); }).catch(function (e) { busy(false); toast(friendly(e), 5500); });
     },
@@ -2002,8 +2035,9 @@
     if (fresh && validMe(cached.me) && !S.params.inv && !S.params.ref && !S.params.src && !S.params.ch) { // เปิดทันทีจากข้อมูลล่าสุดในเครื่อง ไม่ต้องรอ LINE (เร็วขึ้น ~1 วินาที)
       S.cat = cached.cat; S.me = cached.me; S.fromCache = true; S.early = true; loadCart(); show();
     }
-    liff.init({ liffId: CFG.LIFF_ID, withLoginOnExternalBrowser: true }).then(function () {
-      if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return null; }
+    liff.init({ liffId: CFG.LIFF_ID, withLoginOnExternalBrowser: false }).then(function () { // 3.1.2: ล็อกอินเองพร้อมหน้าปัจจุบัน (ล็อกอินอัตโนมัติของ LINE พากลับหน้าแรกเสมอ)
+      if (!liff.isLoggedIn()) { try { sessionStorage.setItem('pk2_after_login', location.search); } catch (e) { } liff.login({ redirectUri: location.href }); return null; }
+      try { var al = sessionStorage.getItem('pk2_after_login'); sessionStorage.removeItem('pk2_after_login'); if (al && !S.params.page) { var ap = paramsOf(al); Object.keys(ap).forEach(function (k) { if (!S.params[k]) S.params[k] = ap[k]; }); S.page = S.params.page || S.page; } } catch (e) { }
       readyResolve();
       cleanUrl();
       var uid = ''; try { uid = (liff.getContext() || {}).userId || ''; } catch (e) { }
