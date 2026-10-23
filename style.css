@@ -1,4 +1,4 @@
-/* Betagro Shop Phokeaw: white & green, no external font / icon dependency. v3.1.0: dark mode follows the device, or the back-office toggle (html[data-theme]) */
+/* Betagro Shop Phokeaw: white & green, no external font / icon dependency. v3.1.1: larger customer text, single promo strip, pay block on top. v3.1.0: dark mode follows the device, or the back-office toggle (html[data-theme]) */
 :root{--bg:#F5F7F4;--surface:#FFFFFF;--surface-2:#F2F6F1;--sunk:#E7EEE8;--ink:#183C30;--ink-2:#465E53;--muted:#617368;--line:#E0E8DF;--line-2:#BBCDBF;--brand:#00845F;--brand-btn:#006B4E;--brand-ink:#006346;--brand-soft:#E9F4EC;--accent:#205B54;--accent-soft:#EAF3F2;--accent-ink:#235A54;--warn:#805200;--warn-soft:#FFF5D9;--bad:#AC2D26;--bad-soft:#FCEDEB;--good:#006346;--good-soft:#E9F4EC;--radius:18px;--top-height:90px;color-scheme:light}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -348,3 +348,52 @@ input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
 .st-add select{flex:1;min-width:0;min-height:44px}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .eta-ic{background:#0F1D17}:root:not([data-theme=light]) .ship-new{border-color:#74BE8B}:root:not([data-theme=light]) .busy-bar i{background:#74BE8B}}
 :root[data-theme=dark] .eta-ic{background:#0F1D17}:root[data-theme=dark] .ship-new{border-color:#74BE8B}:root[data-theme=dark] .busy-bar i{background:#74BE8B}
+/* ===== v3.1.1 ฝั่งลูกค้าใช้ง่ายขึ้น ===== */
+/* ตัวอักษรที่เกี่ยวกับเงิน เวลา และเงื่อนไข อย่างน้อย 14px (เฉพาะหน้าลูกค้า html.cust หน้าหลังร้านไม่เปลี่ยน) */
+.cust .hint,.cust .row,.cust .order-summary .row,.cust .row.disc.sub,.cust .notice small,.cust .magnet-banner small,.cust .coupon-strip small,.cust .smart-bar small,.cust .promo-pick small,.cust .eta-card small,.cust .eta-rules,.cust .eta-rules table,.cust .nudge-line,.cust .bill-card-foot small,.cust .smart-hint,.cust .ship-addr,.cust .area-line,.cust .ps-txt small,.cust details.cond,.cust .section-sub{font-size:14px}
+.cust .tiers{font-size:13px}
+.cust .tag{font-size:12px}
+.cust .kv small,.cust .ship-txt small,.cust .ship-new small,.cust .product-buy small,.cust .bundle .it,.cust .bundle-buy small,.cust .bundle-section>p.hint,.cust .pill,.cust .section-heading>.hint{font-size:13px}
+.cust .tile small,.cust .benefit-end,.cust .monthly-pick strong small,.cust .top .t small{font-size:12px}
+/* เงื่อนไขพับไว้ แตะ "ดูเงื่อนไข" */
+details.cond{margin-top:6px;line-height:1.55}
+details.cond>summary{cursor:pointer;display:inline-flex;align-items:center;min-height:32px;font-weight:600;text-decoration:underline;text-underline-offset:3px;list-style:none}
+details.cond>summary::-webkit-details-marker{display:none}
+/* หน้าแรก: สิทธิ์ของคุณวันนี้ (รวมเป็นกล่องเดียว) */
+.promo-strip{display:flex;flex-direction:column;gap:8px}
+.promo-strip .section-heading{padding-bottom:2px}
+.ps-row{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:11px 14px;text-align:left;border:1px solid var(--line);border-radius:14px;background:var(--surface-2);cursor:pointer}
+.ps-ic{display:grid;place-items:center;width:38px;height:38px;flex-shrink:0;border-radius:12px;background:var(--brand-soft);color:var(--brand-ink)}
+.ps-ic .ui-icon{width:20px;height:20px}
+.ps-txt{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.4}
+.ps-txt b{font-size:15px}
+.ps-txt small{color:var(--muted)}
+.ps-row>.ui-icon{width:18px;height:18px;flex-shrink:0;color:var(--muted)}
+.shop-hero.sm{min-height:128px}
+.shop-hero.sm .hero-copy h2{font-size:21px;margin:6px 0}
+.shop-hero.sm .hero-copy p,.shop-hero.sm .hero-tag{display:none}
+/* ลงทะเบียน: เลือกประเภทด้วยปุ่ม 2 ปุ่ม ช่องบังคับมีดอกจัน ที่เหลือพับไว้ */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg-opt{position:relative;display:block}
+.seg-opt input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.seg-opt>span{display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:8px 10px;border:1.5px solid var(--line-2);border-radius:12px;background:var(--surface);font-size:14px;font-weight:600;line-height:1.3;text-align:center}
+.seg-opt>span .ui-icon{width:20px;height:20px;flex-shrink:0}
+.seg-opt .seg-t{display:flex;flex-direction:column;align-items:flex-start;text-align:left;line-height:1.25}
+.seg-opt .seg-t b{font-size:15px}
+.seg-opt .seg-t small{font-size:12px;font-weight:500;color:var(--muted)}
+.seg-opt input:checked+span{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-ink)}
+.seg-opt input:focus-visible+span{outline:3px solid var(--brand);outline-offset:2px}
+.req{color:var(--bad);font-weight:700}
+.reg-more{border:1px dashed var(--line-2);border-radius:14px;padding:2px 14px;margin:2px 0 8px}
+.reg-more>summary{cursor:pointer;min-height:46px;display:flex;align-items:center;font-weight:600;color:var(--ink-2)}
+.reg-more[open]{padding-bottom:12px}
+.reg-more[open]>summary{margin-bottom:6px}
+.reg-more .field+.field{margin-top:12px}
+/* บิล: ยอดที่ต้องโอน + QR อยู่บนสุด */
+.pay-top{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;border:1.5px solid var(--brand)}
+.pay-amt small{display:block;font-size:14px;color:var(--muted)}
+.pay-amt b{display:block;font-size:34px;line-height:1.25}
+.pay-top .qr{padding:6px 0 0;gap:10px}
+.row.adj{color:var(--ink-2)}
+/* ซื้อคู่พิเศษวันนี้: แถวสินค้าแบบเดียวกับหมวดอื่น */
+.smart-today .section-sub+.prod{border-top:0}
