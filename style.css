@@ -1,4 +1,4 @@
-/* Betagro Shop Phokeaw: white & green, no external font / icon dependency. v3.1.3: UAT tools (persona bar, simulated clock, mock chat). v3.1.2: bill delivery time, readiness checklist. v3.1.1: larger customer text, single promo strip, pay block on top. v3.1.0: dark mode follows the device, or the back-office toggle (html[data-theme]) */
+/* Betagro Shop Phokeaw: white & green, no external font / icon dependency. v3.1.4: bills refreshing hint. v3.1.3: UAT tools (persona bar, simulated clock, mock chat). v3.1.2: bill delivery time, readiness checklist. v3.1.1: larger customer text, single promo strip, pay block on top. v3.1.0: dark mode follows the device, or the back-office toggle (html[data-theme]) */
 :root{--bg:#F5F7F4;--surface:#FFFFFF;--surface-2:#F2F6F1;--sunk:#E7EEE8;--ink:#183C30;--ink-2:#465E53;--muted:#617368;--line:#E0E8DF;--line-2:#BBCDBF;--brand:#00845F;--brand-btn:#006B4E;--brand-ink:#006346;--brand-soft:#E9F4EC;--accent:#205B54;--accent-soft:#EAF3F2;--accent-ink:#235A54;--warn:#805200;--warn-soft:#FFF5D9;--bad:#AC2D26;--bad-soft:#FCEDEB;--good:#006346;--good-soft:#E9F4EC;--radius:18px;--top-height:90px;color-scheme:light}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -430,3 +430,7 @@ details.cond>summary::-webkit-details-marker{display:none}
 .chat-modal .modal-in{max-width:420px}.chat-modal .tc-list{max-height:60vh}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .tc-list{background:#2B3A47}}
 [data-theme=dark] .tc-list{background:#2B3A47}
+
+/* v3.1.4 bills list: showing cached list while refreshing */
+.hint.refreshing{display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:.92em}
+.hint.refreshing svg{width:16px;height:16px;flex:none}

@@ -3,6 +3,7 @@
  * v3.0.0: โปร Smart/Magnet, สต็อก SAP (F1595/F1077), แต้มผู้แนะนำ, ช่องทาง QR, KPI, พื้นที่จัดส่ง, รีเซ็ตข้อมูล UAT
  * v3.1.0: เมนูซ้าย + โหมดมืด/สว่าง, เปิดบิลขั้นตอนเดียว, ระบบแนะนำการออกรถ (ส่งภายใน 1 ชม. รถ 2 คัน ไม่ใส่เลขไมล์),
  *         ค้นหาราคา/สต๊อก, แท็บโปรโมชั่น (Smart / Magnet), คำขอผูกบัญชีลูกค้าเดิม, ตั้งเวลาทำการ, กดแล้วตอบสนองทันที
+ * v3.1.4: KPI ลูกค้าเดิมนับเฉพาะลูกค้าเดิม, บอกจำนวนออเดอร์ที่แก้หมุด, แจ้งลูกค้าเมื่อตรวจไม่พบยอด, บรอดแคสต์นับโควตาเฉพาะคนจริง, ข้อความออกรถบิลหนัก, คำเตือนบนปุ่มออกรถ 8 วินาที
  * v3.1.3: เครื่องมือ UAT บนระบบจริงในแท็บเครื่องมือ (ลูกค้าทดสอบ นาฬิกาจำลอง รันงานแบบทดสอบ โควตาจำลอง แชตจำลอง ล้างข้อมูลทดสอบ)
  */
 (function () {
@@ -327,7 +328,7 @@
       var chip = tr.now ? '<span class="go-chip now">ออกได้เลย</span>' : !tr.ready ? '<span class="go-chip wait">รอเปิดบิล</span>' : '<span class="go-chip later">ออก ' + esc(tr.depart) + ' น.</span>';
       var url = mapsUrl(tr.stops, r.shop), heavy = tr.stops.some(function (s) { return s.legs > 1; });
       h += '<section class="box trip dispatch' + (tr.late ? ' late' : '') + (tr.now ? ' go' : '') + '" id="trip-' + tr.no + '"><div class="trip-top"><div><h3>เที่ยวที่ ' + tr.no + ' <span class="pill appr">รถ ' + esc(tr.bike) + '</span></h3><small class="hint">' + tr.stops.length + ' จุด ' + tr.kg + ' กก. กลับประมาณ ' + esc(tr.back) + ' น.' + (tr.latest ? ' ออกไม่เกิน ' + esc(tr.latest) + ' น.' : '') + '</small></div>' + chip + '</div>' +
-        (tr.late ? '<div class="alert bad">มีจุดที่จะส่งไม่ทันเวลา ควรออกทันที</div>' : '') + (!tr.ready ? '<div class="alert warn">ยังไม่เปิดบิล ' + tr.stops.filter(function (s) { return !s.ready; }).length + ' จุด <button class="text-btn" data-a="tab" data-p="orders">ไปเปิดบิล</button></div>' : '') +
+        (tr.late ? '<div class="alert bad">มีจุดที่จะส่งไม่ทันเวลา ควรออกทันที</div>' : '') + (!tr.ready ? '<div class="alert warn">ยังไม่เปิดบิล ' + tr.stops.filter(function (s) { return !s.ready; }).length + ' จุด' + (can('orders') ? ' <button class="text-btn" data-a="tab" data-p="orders">ไปเปิดบิล</button>' : '') + '</div>' : '') +
         (edit && tr.stops.length > 1 ? '<div class="sel-all"><button class="text-btn" data-a="admTripSel" data-no="' + tr.no + '" data-on="1">เลือกทุกจุด</button><span class="vbar" aria-hidden="true">|</span><button class="text-btn" data-a="admTripSel" data-no="' + tr.no + '" data-on="0">ไม่เลือกทุกจุด</button></div>' : '') +
         tr.stops.map(function (s, i) { return dispStop(s, i, tr, edit); }).join('') +
         '<div class="acts">' + (edit ? '<button class="btn ' + (tr.now ? 'pri' : 'blue') + '" data-a="admDispatchOut" data-no="' + tr.no + '">' + icon('truck') + ' ออกรถ ' + esc(tr.bike) + (heavy ? ' (บิลหนัก)' : '') + '</button>' : '') + (url ? '<a class="btn sm" href="' + esc(url) + '" target="_blank" rel="noopener">' + ic('map') + ' เส้นทาง</a>' : '') + '<button class="btn sm" data-a="admPrint" data-p="' + tr.no + '">' + ic('print') + ' พิมพ์ใบงาน</button></div></section>';
@@ -434,7 +435,7 @@
       return '<div class="row"><span><b>' + esc(x.name) + '</b> <span class="mono hint">' + esc(x.sno || '') + '</span><br><small class="hint">LINE ' + esc(x.lineName) + ', เบอร์ที่ให้มา </small>' + tel(x.phone) + '<small class="hint"> ขอเมื่อ ' + esc(x.at) + '</small></span><span class="row-acts">' +
         (edit ? '<button class="btn sm blue" data-a="admLink" data-id="' + esc(x.id) + '" data-ok="1">ใช่ ลูกค้ารายนี้</button><button class="btn sm bad" data-a="admLink" data-id="' + esc(x.id) + '" data-ok="0" data-confirm="1">ไม่ใช่</button>' : '') + '</span></div>';
     }).join('') + '<div class="hint">โทรหาเบอร์ที่ให้มาก่อนกดยืนยัน</div></div>';
-    h += '<div class="box"><h3>ลูกค้าเดิมที่ย้ายเข้า OA แล้ว ' + mg.moved + ' / ' + mg.total + ' (' + pct.toFixed(1) + '%)</h3><div class="kg-bar"><span style="width:' + pct + '%"></span></div><div class="hint">เป้า 90%</div></div>';
+    h += '<div class="box"><h3>ลูกค้าเดิมที่ย้ายเข้า OA แล้ว ' + mg.moved + ' / ' + mg.total + ' (' + pct.toFixed(1) + '%)</h3><div class="kg-bar"><span style="width:' + pct + '%"></span></div><div class="hint">เป้า 90% นับเฉพาะลูกค้าเดิมจากฐานร้าน (ไม่นับลูกค้าใหม่ที่สมัครเอง)</div></div>';
     if (can('manage') && (d.privacy || []).length) h += '<div class="box privacy-box"><h3>' + ic('lock') + ' คำขอข้อมูลส่วนบุคคล (' + d.privacy.length + ')</h3><div class="hint">ลูกค้าขอลบข้อมูล · ตรวจว่าไม่มีบิลค้าง แล้วกด "ลบข้อมูลส่วนบุคคล" (ชื่อ/เบอร์/ที่อยู่/LINE ถูกลบ ประวัติขายเก็บไว้ตามกฎหมายบัญชี) · ภายใน 30 วัน</div>' +
       d.privacy.map(function (x) { return '<div class="row"><span><b>' + esc(x.name) + '</b> ' + esc(x.sno) + ' · ' + tel(x.phone) + '<br><small class="hint">ขอเมื่อ ' + esc(x.at.slice(0, 16)) + '</small></span><span><button class="btn sm bad" data-a="adm" data-op="anonymizeMember" data-id="' + esc(x.id) + '" data-confirm="1">ลบข้อมูลส่วนบุคคล</button> <button class="btn sm" data-a="adm" data-op="privacyDone" data-id="' + esc(x.id) + '" data-confirm="1">ปิดคำขอ (ไม่ต้องลบ)</button></span></div>'; }).join('') + '</div>';
     var pIds = d.pendingMembers.map(function (m) { return m.id; });
@@ -581,7 +582,7 @@
   var SEGS = [['all', 'เพื่อนทั้งหมด'], ['FS', 'Food Service'], ['Consumer', 'Consumer'], ['dormant', 'ไม่ได้สั่งเกิน 14 วัน'], ['referred', 'ลูกค้าใหม่จากคำชวน'], ['sign', 'ลูกค้าจากป้าย']];
   function adBc(d) {
     var q = d.quota || { used: 0, plan: 0 };
-    var h = '<form class="box form" data-form="broadcast"><h3>บรอดแคสต์แบ่งกลุ่ม</h3><div class="field"><label>กลุ่ม</label><select name="segment">' + SEGS.map(function (s) { return '<option value="' + s[0] + '">' + s[1] + ' (' + ((d.segments || {})[s[0]] || 0) + ' คน)</option>'; }).join('') + '</select></div>' +
+    var h = '<form class="box form" data-form="broadcast"><h3>บรอดแคสต์แบ่งกลุ่ม</h3><div class="field"><label>กลุ่ม</label><select name="segment">' + SEGS.map(function (s) { var sg = d.segments || {}, n = sg[s[0]] || 0, lv = sg.live && sg.live[s[0]] !== undefined ? sg.live[s[0]] : n; return '<option value="' + s[0] + '" data-live="' + lv + '">' + s[1] + ' (' + n + ' คน)' + (lv !== n ? ' คนจริง ' + lv + ', ลูกค้าทดสอบ ' + (n - lv) : '') + '</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label>ข้อความ</label><select name="template"><option value="bundle">เซ็ตคุ้มเดือนนี้</option><option value="pom">สินค้าแห่งเดือน</option><option value="winback">ชวนกลับมาสั่ง</option>' + (d.cfg.SMART_ENABLED !== false ? '<option value="smart">Smart Set วันนี้ (ราคาลด 30% ถึง 23:59)</option>' : '') + '</select></div><div class="hint">ทุกผู้รับใช้ 1 ข้อความในโควตา · ใช้ไปแล้ว ' + fmt(q.used) + ' / ' + (q.plan ? fmt(q.plan) : 'ไม่จำกัด') + (q.source === 'line' ? '' : ' (ประมาณ)') + ' · แพ็กเกจฟรีส่งเกินโควตาไม่ได้</div><button class="btn blue" type="submit">ส่ง</button></form>';
     h += '<div class="box"><h3>ส่งแล้ว</h3>' + ((d.broadcasts || []).length ? d.broadcasts.map(function (b) { return '<div class="row"><span>' + esc(b.time) + ' · ' + esc(b.template) + ' · ' + esc(b.segment) + (b.by ? ' · ' + esc(b.by) : '') + '</span><span>' + b.n + ' คน</span></div>'; }).join('') : '<div class="hint">ยังไม่ได้ส่ง</div>') + '</div>';
     return h;
@@ -1237,7 +1238,7 @@
     var ids = tr.stops.filter(function (s) { return tr.stops.length < 2 || A.sel[s.id] !== false; }).map(function (s) { return s.id; }).filter(function (id, i, a) { return a.indexOf(id) === i; });
     if (!ids.length) { toast('เลือกอย่างน้อย 1 จุด'); return; }
     var notReady = tr.stops.filter(function (s) { return ids.indexOf(s.id) >= 0 && !s.ready; }).length;
-    if (notReady && !el.dataset.sure) { el.dataset.sure = '1'; el.dataset.label = el.innerHTML; el.textContent = 'ยังไม่เปิดบิล ' + notReady + ' จุด กดอีกครั้งเพื่อออกรถ'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.innerHTML = el.dataset.label; } }, 4000); return; }
+    if (notReady && !el.dataset.sure) { el.dataset.sure = '1'; el.dataset.label = el.innerHTML; el.textContent = 'ยังไม่เปิดบิล ' + notReady + ' จุด กดอีกครั้งเพื่อออกรถ'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.innerHTML = el.dataset.label; } }, 8000); return; }
     /* 3.1.2 บิลหนัก: ทุกเที่ยวของบิลเดียวกันออกพร้อมกัน แยกตามรถ (รถคันเดียวส่งครั้งเดียว รวมรอบที่ต้องวิ่งซ้ำ) */
     var heavy = tr.stops.filter(function (s) { return s.legs > 1 && ids.indexOf(s.id) >= 0; }).map(function (s) { return s.id; });
     var group = heavy.length ? (A.trips || []).filter(function (t) { return t === tr || t.stops.some(function (s) { return s.legs > 1 && heavy.indexOf(s.id) >= 0; }); }) : [tr];
@@ -1249,14 +1250,15 @@
     });
     var busyB = order.filter(function (bk) { var st = (A.bikes || []).filter(function (x) { return x.bike === bk; })[0]; return st && !st.free; });
     A.forceOut = A.forceOut || {}; var forced = el.dataset.force === '1' || order.some(function (bk) { return Date.now() - (A.forceOut[bk] || 0) < 60000; }); // หลังบ้านเพิ่งบอกว่ารถยังไม่กลับ แล้วกดอีกครั้ง = ยืนยันแล้ว
-    if (busyB.length && !el.dataset.sure && !forced) { var bs = (A.bikes || []).filter(function (x) { return busyB.indexOf(x.bike) >= 0; }); el.dataset.sure = '1'; el.dataset.label = el.innerHTML; el.textContent = 'รถ ' + busyB.join(', ') + ' ยังไม่กลับ (ประมาณ ' + bs.map(function (x) { return x.freeAt; }).join(', ') + ' น.) ถ้ากลับแล้ว กดอีกครั้ง'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.innerHTML = el.dataset.label; } }, 5000); return; }
+    if (busyB.length && !el.dataset.sure && !forced) { var bs = (A.bikes || []).filter(function (x) { return busyB.indexOf(x.bike) >= 0; }); el.dataset.sure = '1'; el.dataset.label = el.innerHTML; el.textContent = 'รถ ' + busyB.join(', ') + ' ยังไม่กลับ (ประมาณ ' + bs.map(function (x) { return x.freeAt; }).join(', ') + ' น.) ถ้ากลับแล้ว กดอีกครั้ง'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.innerHTML = el.dataset.label; } }, 8000); return; }
     var closePrev = !!busyB.length || forced;
     var calls = order.map(function (bk) { var b = byBike[bk]; return api('deliveryOut', { ids: b.ids, bike: b.bike, stops: b.ids.length, kg: heavy.length ? Math.round(b.kg * 10) / 10 : undefined, rounds: b.rounds, closePrev: closePrev, note: heavy.length ? 'บิลหนัก' + (order.length > 1 ? ' (ออกพร้อมกัน ' + order.length + ' คัน)' : '') + (b.rounds > 1 ? ' วิ่ง ' + b.rounds + ' รอบ' : '') : '' }).catch(function (e) { if (e.code === 'BIKEOUT') { el.dataset.force = '1'; A.forceOut[b.bike] = Date.now(); } throw e; }); }); // BIKEOUT = หลังบ้านเห็นว่ารถยังไม่กดกลับ (ไม่ใช้ BUSY เพราะ BUSY หน้าเว็บลองใหม่เอง) → กดอีกครั้งปิดเที่ยวเดิมให้
     run('กำลังบันทึกออกรถ...', Promise.all(calls), function (rs) {
       order.forEach(function (bk) { delete A.forceOut[bk]; });
       var r0 = rs[0] || {}, n = rs.reduce(function (s, r) { return s + (r.notified || 0); }, 0);
       var tell = n > 0 ? ' แจ้งเวลาถึงในแชตแล้ว ' + n + ' ราย' : r0.pushOut ? '' : ' ลูกค้าดูเวลาถึงได้ในแอป';
-      return after(r0, 'ออกรถ ' + rs.map(function (r) { return r.bike; }).join(' และ ') + ' แล้ว ' + rs.reduce(function (s, r) { return s + (r.count || 0); }, 0) + ' จุด กลับประมาณ ' + (r0.back || '-') + ' น.' + tell);
+      var stops = {}; order.forEach(function (bk) { byBike[bk].ids.forEach(function (id) { stops[id] = 1; }); }); // 3.1.4 นับจุดตามลูกค้า (บิลหนักหลายคัน = 1 จุด)
+      return after(r0, 'ออกรถ ' + rs.map(function (r) { return r.bike; }).join(' และ ') + ' แล้ว ' + (heavy.length && order.length > 1 ? Object.keys(stops).length : rs.reduce(function (s, r) { return s + (r.count || 0); }, 0)) + ' จุด' + (heavy.length && order.length > 1 ? ' (บิลหนัก ' + order.length + ' คัน)' : '') + ' กลับประมาณ ' + (r0.back || '-') + ' น.' + tell);
     });
   };
   ACT.admLink = function (el) {
@@ -1433,7 +1435,7 @@
       if (op === 'approveCoins') return after(r, 'อนุมัติ ' + r.approved + ' รายการ');
       if (op === 'askShort') return after(r, r.sent ? 'ส่งข้อความขอยอดที่ขาด ' + baht(r.short) + ' แล้ว' : 'บันทึกแล้ว (ลูกค้ายังไม่เพิ่มเพื่อน OA/ส่งไม่สำเร็จ)');
       if (op === 'remindOne') return after(r, r.sent ? 'ส่งเตือนแล้ว' : 'ส่งไม่สำเร็จ (ดู MessageLog)');
-      if (op === 'confirmPay' || op === 'payReview') return after(r, r.paid ? 'ชำระครบ ปิดบิลแล้ว' + (r.pay && r.pay.over ? ' (โอนเกิน ' + baht(r.pay.over) + ' → เครดิต)' : '') : 'บันทึกแล้ว · คงค้าง ' + baht(r.pay ? Math.max(0, r.pay.balance) : 0));
+      if (op === 'confirmPay' || op === 'payReview') return after(r, r.paid ? 'ชำระครบ ปิดบิลแล้ว' + (r.pay && r.pay.over ? ' (โอนเกิน ' + baht(r.pay.over) + ' → เครดิต)' : '') : 'บันทึกแล้ว · คงค้าง ' + baht(r.pay ? Math.max(0, r.pay.balance) : 0) + (r.notified ? ' (แจ้งลูกค้าในแชตแล้ว)' : ''));
       if (op === 'cacheClear') { return api('catalog').then(function (c) { S.cat = c; return after(r, 'ล้างแคชแล้ว'); }); }
       if (op === 'priceApply') return api('catalog').then(function (c) { S.cat = c; return after(r, 'ราคาใหม่มีผลแล้ว'); });
       if (op === 'rejectMember' || op === 'anonymizeMember' || op === 'privacyDone') return after(r, op === 'anonymizeMember' ? 'ลบข้อมูลส่วนบุคคลแล้ว' : 'เรียบร้อย', function (d) { d.pendingMembers = (d.pendingMembers || []).filter(function (m) { return m.id !== data.id; }); d.privacy = (d.privacy || []).filter(function (m) { return m.id !== data.id; }); });
@@ -1461,10 +1463,10 @@
   FORMS.createSign = function (f) { var fd = new FormData(f); run('กำลังสร้าง...', api('createSign', { name: fd.get('name'), type: fd.get('type'), area: fd.get('area') }), function (r) { return after(r, 'สร้างป้าย ' + r.id + ' แล้ว'); }); };
   FORMS.broadcast = function (f) { // 3.1.2: กดยืนยันก่อนส่ง (ใช้โควตาทีเดียวทั้งกลุ่ม)
     var fd = new FormData(f), btn = f.querySelector('button[type=submit]'), sel = f.querySelector('select[name=segment]'), tpl = f.querySelector('select[name=template]');
-    var label = sel ? sel.options[sel.selectedIndex].textContent : '', n = (/\((\d[\d,]*) คน\)/.exec(label) || [0, '?'])[1], key = fd.get('segment') + '|' + fd.get('template');
-    if (f.dataset.sure !== key) { f.dataset.sure = key; if (btn) btn.textContent = 'ยืนยันส่ง "' + (tpl ? tpl.options[tpl.selectedIndex].textContent : '') + '" ถึง ' + n + ' คน (ใช้โควตา ' + n + ' ข้อความ)'; setTimeout(function () { if (f.isConnected && f.dataset.sure === key) { delete f.dataset.sure; if (btn) btn.textContent = 'ส่ง'; } }, 8000); return; }
+    var opt = sel ? sel.options[sel.selectedIndex] : null, label = opt ? opt.textContent : '', n = (/\((\d[\d,]*) คน\)/.exec(label) || [0, '?'])[1], lv = opt && opt.dataset.live !== undefined ? opt.dataset.live : n, key = fd.get('segment') + '|' + fd.get('template');
+    if (f.dataset.sure !== key) { f.dataset.sure = key; if (btn) btn.textContent = 'ยืนยันส่ง "' + (tpl ? tpl.options[tpl.selectedIndex].textContent : '') + '" ถึง ' + n + ' คน (ใช้โควตา ' + lv + ' ข้อความ' + (String(lv) !== String(n) ? ', ลูกค้าทดสอบไปแชตจำลอง' : '') + ')'; /* 3.1.4 นับโควตาเฉพาะคนจริง */ setTimeout(function () { if (f.isConnected && f.dataset.sure === key) { delete f.dataset.sure; if (btn) btn.textContent = 'ส่ง'; } }, 8000); return; }
     delete f.dataset.sure;
-    run('กำลังส่ง...', api('broadcast', { segment: fd.get('segment'), template: fd.get('template') }), function (r) { return after(r, 'ส่งถึง ' + r.sent + ' คน'); });
+    run('กำลังส่ง...', api('broadcast', { segment: fd.get('segment'), template: fd.get('template') }), function (r) { return after(r, 'ส่งถึง ' + r.sent + ' คน' + (r.test ? ' (คนจริง ' + r.live + ', ลูกค้าทดสอบ ' + r.test + ' ไปแชตจำลอง)' : '')); });
   };
   FORMS.counterBill = function (f) { var fd = new FormData(f); run('กำลังบันทึก...', api('counterBill', { memberId: fd.get('memberId'), txn: fd.get('txn'), amount: fd.get('amount') }), function () { return after(null, 'บันทึกแล้ว'); }); };
   FORMS.payRecord = function (f) { var fd = new FormData(f); run('กำลังบันทึก...', api('payRecord', { id: f.dataset.id, amount: String(fd.get('amount')).replace(/,/g, ''), method: fd.get('method'), note: fd.get('note') }), function (r) { A.open['rec-' + f.dataset.id] = false; return after(r, r.paid ? 'ชำระครบ ปิดบิลแล้ว' : 'บันทึกแล้ว'); }); };
@@ -1554,7 +1556,7 @@
   FORMS.stockMult = function (f) { run('กำลังบันทึก...', api('stockMult', { sku: f.dataset.sku || '', mult: new FormData(f).get('mult') }), function (r) { return after(r, 'ตั้งตัวคูณแล้ว ' + r.n + ' สินค้า'); }); };
   FORMS.stockMap = function (f) { var fd = new FormData(f); if (!fd.get('sku')) { toast('เลือก SKU ก่อน'); return; } run('กำลังจับคู่...', api('stockMap', { material: f.dataset.mat, sku: fd.get('sku'), factor: fd.get('factor'), sapUnit: fd.get('sapUnit') }), function () { return after(null, 'จับคู่แล้ว · มีผลกับไฟล์ถัดไป'); }); };
   FORMS.memberArea = function (f) { var fd = new FormData(f); run('กำลังบันทึก...', api('memberArea', { id: f.dataset.id, on: !!fd.get('on'), until: fd.get('until') || '', note: fd.get('note') || '' }), function () { return after(null, fd.get('on') ? 'อนุญาตส่งนอกพื้นที่แล้ว' : 'ยกเลิกการอนุญาตแล้ว'); }); };
-  FORMS.addressStaff = function (f) { var fd = new FormData(f); run('กำลังบันทึกหมุด...', api('addressStaff', { id: f.dataset.id, geo: fd.get('geo') || '', address: fd.get('address') || '' }), function (r) { return after(r, 'บันทึกหมุดแล้ว · ' + ({ 'in': 'ในพื้นที่', band: 'แถบขอบ', out: 'นอกพื้นที่' }[r.area] || r.area)); }); };
+  FORMS.addressStaff = function (f) { var fd = new FormData(f); run('กำลังบันทึกหมุด...', api('addressStaff', { id: f.dataset.id, geo: fd.get('geo') || '', address: fd.get('address') || '' }), function (r) { return after(r, 'บันทึกหมุดแล้ว · ' + ({ 'in': 'ในพื้นที่', band: 'แถบขอบ', out: 'นอกพื้นที่' }[r.area] || r.area) + (r.orders ? ' (แก้ที่อยู่ในออเดอร์ที่ยังไม่ออกส่ง ' + r.orders + ' รายการ)' : '')); }); };
   FORMS.pointsAdjust = function (f) { var fd = new FormData(f); run('กำลังปรับแต้ม...', api('pointsAdjust', { memberId: f.dataset.id, points: fd.get('points'), note: fd.get('note') }), function (r) { return after(r, 'ปรับแต้มแล้ว คงเหลือ ' + fmt(r.points.bal)); }); };
   FORMS.pointsReverse = function (f) { var fd = new FormData(f); run('กำลังหักแต้มคืน...', api('pointsReverse', { id: String(fd.get('id') || '').trim(), reason: fd.get('reason') }), function (r) { return after(r, 'หักแต้มคืนแล้ว ' + (r.reversed || 0) + ' รายการ'); }); };
   FORMS.channelSave = function (f) { var fd = new FormData(f); run('กำลังสร้าง...', api('channelSave', { code: fd.get('code'), name: fd.get('name'), note: fd.get('note'), active: true }), function (r) { ACT.admQR({ dataset: { t: r.link, n: (fd.get('name') || r.code) + ' · ' + r.code } }); return after(r, 'สร้างช่องทาง ' + r.code + ' แล้ว'); }); };

@@ -2,13 +2,14 @@
  * ข้อมูลทั้งหมดอยู่ใน Google Sheet ผ่าน Apps Script, ดีไซน์ขาว–เขียว
  * v3.0.0: Smart Set / Magnet Set, แต้มสะสม, สมุดที่อยู่ + ปักหมุดบนแผนที่ (MapLibre + OpenFreeMap), ตรวจพื้นที่ส่ง, สต็อก SAP
  * v3.1.1: ชื่อโปรฝั่งลูกค้าเป็นภาษาธรรมดา (ซื้อคู่พิเศษ / ส่วนลดครั้งแรก), ลงทะเบียนสั้นลง, บิลวางยอดและ QR ไว้บนสุด, หน้าแรกปุ่มหลักขึ้นก่อน, ตัวอักษรใหญ่ขึ้น, ปักหมุดบอกระยะจากร้าน
- * v3.1.0: ส่งถึงภายใน 1 ชม. (บอกเวลาส่งถึงในตะกร้า), เลือกที่อยู่แบบ Grab, ผูกบัญชีด้วยเบอร์/รหัส S/ชื่อ, สั่งประจำเพิ่มสินค้าได้, กดแล้วตอบสนองทันที
+ * v3.1.0: ส่งด่วนในวัน (บอกเวลาส่งถึงในตะกร้า), เลือกที่อยู่แบบ Grab, ผูกบัญชีด้วยเบอร์/รหัส S/ชื่อ, สั่งประจำเพิ่มสินค้าได้, กดแล้วตอบสนองทันที
+ * v3.1.4: ลูกค้าไม่เห็นเป้าเวลาส่งของร้าน (บอกเวลาที่คาดว่าจะถึง), ผ่อนผันหมุดเดิมเฉพาะลูกค้าเดิมที่ยังไม่มีสมุดที่อยู่, ปุ่มยืนยันสั่งประจำหลังร้านถาม, แจ้งกำลังอัปเดตรายการบิล
  * v3.1.3: สวมบทลูกค้าทดสอบ + แชตจำลอง + นาฬิกาจำลอง (เครื่องมือ UAT ผู้จัดการ), ค้นหาที่อยู่ในเขตส่งก่อน, บิลรับเองที่ร้านบอกเวลามารับ
  */
 (function () {
   'use strict';
   var CFG = window.APP_CONFIG || {};
-  var APP_VERSION = '3.1.3';
+  var APP_VERSION = '3.1.4';
 
   /* ===== คำนวณตะกร้า (ใช้ร่วมกันทั้งหลังบ้านและหน้า MINI App — แก้ที่เดียวทั้งสองฝั่ง) ===== */
   function daysBetween(a, b) {
@@ -480,7 +481,7 @@
       return '<div class="tc-msg tc-text">[' + esc(m.type) + '] ' + esc(m.altText || '') + '</div>';
     }).join('');
   }
-  var CHAT_TH = { welcome: 'ต้อนรับ', bill: 'บิล', short: 'ยอดขาด', paid: 'รับเงินแล้ว', remind: 'ตามเงิน', standing: 'ถามสั่งประจำ', cancel: 'ยกเลิก', approved: 'ร้านรับออเดอร์', coin: 'เหรียญ', refnotify: 'แจ้งผู้ชวน', pool: 'รอรวมรอบ', winback: 'ชวนกลับ', evening: 'รอบเย็น',
+  var CHAT_TH = { welcome: 'ต้อนรับ', bill: 'บิล', short: 'ยอดขาด', paid: 'รับเงินแล้ว', remind: 'ตามเงิน', standing: 'ถามสั่งประจำ', cancel: 'ยกเลิก', approved: 'ยืนยันสมาชิก', received: 'รับออเดอร์', coin: 'เหรียญ', refnotify: 'แจ้งผู้ชวน', pool: 'รอรวมรอบ', winback: 'ชวนกลับ', evening: 'รอบเย็น',
     refpoints: 'แต้มผู้ชวน', out: 'ออกรถ', magnetremind: 'เตือนส่วนลดครั้งแรก', broadcast: 'บรอดแคสต์', summary: 'สรุปยอด', 'staff-order': 'แจ้งออเดอร์ใหม่', 'staff-pay': 'แจ้งโอน', 'email-order': 'อีเมลออเดอร์ใหม่', 'email-pay': 'อีเมลแจ้งโอน' };
   function chatList(rows, withName) {
     if (!rows || !rows.length) return '<div class="hint">ยังไม่มีข้อความ</div>';
@@ -714,7 +715,7 @@
     i = Math.min(1, W.length - 1); return { slot: W[i].name, date: tmr(), depart: W[i].depart };
   }
   function autoSlot() { return String(S.cat.cfg.SLOT_MODE || 'auto') !== 'choose'; }
-  /* v3.1.0 เวลาทำการ + ส่งถึงภายใน 1 ชม. (ตรงกับหลังบ้าน hours_ / deliveryQuote_) */
+  /* v3.1.0 เวลาทำการ + เวลาส่งถึงโดยประมาณ (ตรงกับหลังบ้าน hours_ / deliveryQuote_) */
   function hmv(v, d) { v = String(v === undefined || v === null ? '' : v).trim(); return /^\d{1,2}:\d{2}$/.test(v) ? ('0' + v).slice(-5) : d; }
   function hoursOf() {
     var c = (S.cat && S.cat.cfg) || {};
@@ -722,7 +723,7 @@
       target: Math.max(15, Number(c.DELIVERY_TARGET_MIN) || 60), prep: Math.max(0, Number(c.PREP_MIN) || 15), eta: String(c.SLOT_MODE || '') === 'eta' };
   }
   function etaMode() { return hoursOf().eta; }
-  function targetText(H) { return H.target % 60 === 0 ? (H.target / 60) + ' ชม.' : H.target + ' นาที'; }
+  function custSlot(s) { s = String(s || ''); return /^ส่งภายใน\s/.test(s) ? 'ส่งวันนี้' : s; } // 3.1.4 ชื่อรอบส่งด่วนใช้ภายในร้าน ลูกค้าเห็น "ส่งวันนี้"
   function addHm(t, min) { var x = Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) + min; x = ((x % 1440) + 1440) % 1440; return ('0' + Math.floor(x / 60)).slice(-2) + ':' + ('0' + (x % 60)).slice(-2); }
   function dayAfter(d) { return new Date(Date.parse(d + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10); }
   /* เวลาโดยประมาณในเครื่อง (แสดงทันที) แล้วแทนด้วยเวลาที่หลังบ้านคำนวณจากรถที่ว่างจริง */
@@ -737,9 +738,10 @@
   function etaText(q, H) {
     H = H || hoursOf(); var tmr = q.date && q.date > todayStr();
     if (q.kind === 'pickup') return { big: (tmr ? 'พรุ่งนี้ ' : '') + 'มารับได้ ' + q.at + ' ถึง ' + q.until + ' น.', sub: 'ร้านแจ้งในแชตเมื่อจัดของเสร็จ' };
-    if (q.kind === 'morning') return { big: 'ส่งเที่ยวแรก' + (tmr ? 'พรุ่งนี้' : 'เช้านี้') + ' ถึงก่อน ' + q.at + ' น.', sub: tmr ? 'ร้านปิดรับส่งด่วนหลัง ' + H.lastDeliver + ' น.' : 'ร้านเปิด ' + H.open + ' น.' };
-    if (!q.at) return { big: 'ส่งถึงภายใน ' + targetText(H), sub: 'กำลังคำนวณเวลาส่งถึง' };
-    return { big: 'ส่งถึงประมาณ ' + q.at + ' น.', sub: q.within === false ? 'ช่วงนี้รถส่งของไม่ว่าง อาจถึงช้ากว่าปกติ' : 'ภายใน ' + targetText(H) + ' หลังสั่ง' };
+    if (q.kind === 'morning') return { big: 'ส่งเที่ยวแรก' + (tmr ? 'พรุ่งนี้' : 'เช้านี้') + ' ถึงก่อน ' + q.at + ' น.', sub: tmr ? 'ร้านปิดรับออเดอร์ส่งวันนี้หลัง ' + H.lastDeliver + ' น.' : 'ร้านเปิด ' + H.open + ' น.' };
+    /* 3.1.4 ลูกค้าไม่เห็นเป้าเวลาส่งของร้าน (ใช้ภายในร้าน) บอกเวลาที่คาดว่าจะถึงอย่างเดียว */
+    if (!q.at) return { big: 'กำลังคำนวณเวลาส่งถึง', sub: 'คำนวณจากรถที่ว่างตอนนี้' };
+    return { big: 'ส่งถึงประมาณ ' + q.at + ' น.', sub: q.within === false ? 'ช่วงนี้มีออเดอร์ส่งหลายจุด เวลาโดยประมาณ' : 'เวลาโดยประมาณ' };
   }
   function etaCard(mode) {
     var q = S.ui.eta && S.ui.etaFor === mode ? S.ui.eta : localQuote(mode), x = etaText(q);
@@ -748,7 +750,7 @@
   function etaRules() {
     var H = hoursOf();
     return '<details class="eta-rules"><summary>ร้านจัดรอบให้อัตโนมัติ แตะดูเวลาส่ง</summary><table><tbody>' +
-      '<tr><th>สั่ง ' + H.open + ' ถึง ' + H.lastDeliver + ' น.</th><td>ส่งถึงภายใน ' + targetText(H) + '</td></tr>' +
+      '<tr><th>สั่ง ' + H.open + ' ถึง ' + H.lastDeliver + ' น.</th><td>ส่งวันนี้ ดูเวลาที่คาดว่าจะถึงก่อนกดสั่ง</td></tr>' +
       '<tr><th>สั่งหลัง ' + H.lastDeliver + ' น.</th><td>ส่งเที่ยวแรกพรุ่งนี้ ถึงก่อน ' + H.morningDue + ' น.</td></tr>' +
       '<tr><th>สั่งก่อน ' + H.open + ' น.</th><td>ส่งเที่ยวแรก ถึงก่อน ' + H.morningDue + ' น.</td></tr>' +
       '<tr><th>รับเองที่ร้าน</th><td>สั่งและมารับได้ถึง ' + H.close + ' น.</td></tr></tbody></table></details>';
@@ -861,7 +863,7 @@
     var lat = a ? a.lat : m.lat, lng = a ? a.lng : m.lng;
     var g = lat && lng && !isShopPin(lat, lng) ? geoArea(lat, lng, A.poly, A.band) : { status: 'none', distM: 0 };
     if (g.status === 'in' || g.status === 'band') return { ok: true, status: g.status, distM: g.distM };
-    if (A.grace && (a ? a.source === 'legacy' : true)) return { ok: true, status: 'grace', raw: g.status, distM: g.distM };
+    if (A.grace && (a ? a.source === 'legacy' : !!m.legacyPin)) return { ok: true, status: 'grace', raw: g.status, distM: g.distM }; // 3.1.4 ไม่มีสมุดที่อยู่: ผ่อนผันเฉพาะลูกค้าเดิมที่ยังไม่เคยบันทึกที่อยู่ (ตรงกับหลังบ้าน)
     return { ok: false, status: g.status, distM: g.distM };
   }
   function areaPill(ar) {
@@ -1112,7 +1114,7 @@
     if (of) gifts.push('คูปอง ' + offerText(of) + (of.needsApproval ? ' (ใช้ได้หลังร้านยืนยันข้อมูลร้าน)' : ''));
     if (!mgOn && !of) { var planC = couponPlan(cfg, 'Consumer'); if (planC.pcts[0] > 0) gifts.push('ส่วนลดบิลแรก ' + planC.pcts[0] + '%' + (planC.pcts[1] ? ' และบิลที่สอง ' + planC.pcts[1] + '%' : '')); }
     var offer = gifts.length ? 'ลูกค้าใหม่' + (ty === 'FS' && !isSign ? ' (ร้านค้า) ' : '') + 'รับ ' + gifts.join(' + ') : '';
-    var banner = isRef ? '<div class="alert ok">คุณได้รับคำชวนจากร้านคู่ค้า · ' + esc(offer || 'ลงทะเบียนแล้วสั่งได้เลย') + '</div>' : isSign ? '<div class="alert ok">' + (offer ? esc(offer) + ' · ' : '') + 'รับของที่จุดรับ รอบ ' + esc(cfg.CONDO_TIME) + ' หรือให้ส่งถึงบ้านได้</div>' : offer ? '<div class="alert ok">' + esc(offer) + '</div>' : '';
+    var banner = isRef ? '<div class="alert ok">คุณได้รับคำชวนจากลูกค้าของร้าน · ' + esc(offer || 'ลงทะเบียนแล้วสั่งได้เลย') + '</div>' : isSign ? '<div class="alert ok">' + (offer ? esc(offer) + ' · ' : '') + 'รับของที่จุดรับ รอบ ' + esc(cfg.CONDO_TIME) + ' หรือให้ส่งถึงบ้านได้</div>' : offer ? '<div class="alert ok">' + esc(offer) + '</div>' : '';
     var sp = S.ui.shopPhoto, d0 = S.ui.regDraft || {}, fs = ty === 'FS';
     /* v3.1.1 กรอกเท่าที่จำเป็น: ชื่อ เบอร์ ปักหมุด ยินยอม ที่เหลือพับไว้ใน "ข้อมูลเพิ่มเติม (ไม่บังคับ)" · ย่านส่งให้ร้านกำหนดตอนอนุมัติ */
     var more = (!isSign ? '<div class="field"><label for="rg-contact">ชื่อผู้ติดต่อ</label><input id="rg-contact" name="contact" maxlength="60" autocomplete="name"></div>' +
@@ -1348,7 +1350,7 @@
     else if (pr.mode === 'pickup') line = 'รับที่จุดรับ รอบ ' + esc(S.cat.cfg.CONDO_TIME);
     else if (pr.qk) { var x = etaText({ kind: pr.qk, date: pr.qd, at: pr.qa, within: pr.qw !== '0' }); line = '<b>' + esc(x.big) + '</b><br>' + esc(x.sub) + (pr.qk === 'express' ? '<br>ร้านจัดรอบให้อัตโนมัติ' : ''); }
     else if (pr.pool === '1') line = 'ส่งรวมรอบ: ร้านจะส่งเมื่อมีรอบผ่านย่านของคุณ (วันนี้หรือพรุ่งนี้) และแจ้งเวลาในแชต';
-    else if (pr.slot) line = (tmr ? 'จัดส่งวัน' + dayName(pr.dd) + 'ที่ ' + thDate(pr.dd) + ' ' : 'จัดส่งวันนี้ ') + esc(pr.slot) + (pr.depart ? ' (รถออกประมาณ ' + esc(pr.depart) + ')' : '');
+    else if (pr.slot) line = (tmr ? 'จัดส่งวัน' + dayName(pr.dd) + 'ที่ ' + thDate(pr.dd) + ' ' : 'จัดส่งวันนี้ ') + esc(custSlot(pr.slot)) + (pr.depart ? ' (รถออกประมาณ ' + esc(pr.depart) + ')' : '');
     else if (tmr) line = 'จัดส่งวัน' + dayName(pr.dd) + 'ที่ ' + thDate(pr.dd);
     render(top('ส่งออเดอร์แล้ว', '', false) + '<div class="wrap"><section class="box success-panel"><span class="success-icon">' + icon('check') + '</span><h2>ร้านได้รับออเดอร์แล้วค่ะ</h2><p>ออเดอร์ <b class="mono">' + esc(pr.id) + '</b></p>' +
       (line ? '<p class="alert info">' + line + '</p>' : '') + doneExtra(pr) +
@@ -1359,9 +1361,9 @@
   function statusPill(s) { return s === 'new' ? '<span class="pill new">รอร้านตรวจ</span>' : s === 'approved' ? '<span class="pill appr">กำลังจัดของ</span>' : s === 'billed' ? '<span class="pill bill">รอชำระ</span>' : s === 'paid' ? '<span class="pill paid">ชำระแล้ว</span>' : '<span class="pill red">ยกเลิก</span>'; }
   function payPill(p) { return !p ? '' : p.status === 'review' ? '<span class="pill appr">รอร้านตรวจยอดโอน</span>' : p.status === 'partial' ? '<span class="pill new">ยังขาด ' + baht(p.balance) + '</span>' : p.status === 'over' ? '<span class="pill paid">โอนเกิน → เครดิต</span>' : ''; }
   function pageBills() {
-    loadPage('bills', 'myOrders', {}, function (r) {
+    loadPage('bills', 'myOrders', {}, function (r, cached) {
       var due = r.orders.filter(function (o) { return o.status === 'billed' && o.pay && o.pay.remain > 0; });
-      var h = top('บิลของฉัน', 'ติดตามออเดอร์และการชำระเงิน', true) + '<div class="wrap">' + (due.length ? '<div class="alert warn">มี ' + due.length + ' บิลรอชำระ รวม ' + baht(due.reduce(function (s, o) { return s + o.pay.remain; }, 0)) + ' · แตะบิลเพื่อสแกน QR และแนบสลิป</div>' : '');
+      var h = top('บิลของฉัน', 'ติดตามออเดอร์และการชำระเงิน', true) + '<div class="wrap">' + (cached ? '<div class="hint refreshing">' + icon('clock') + ' กำลังอัปเดตสถานะล่าสุด...</div>' : '') + (due.length ? '<div class="alert warn">มี ' + due.length + ' บิลรอชำระ รวม ' + baht(due.reduce(function (s, o) { return s + o.pay.remain; }, 0)) + ' · แตะบิลเพื่อสแกน QR และแนบสลิป</div>' : '');
       h += r.orders.length ? r.orders.map(function (o) {
         var amt = o.status === 'billed' ? o.pay.remain : (o.actual || o.est);
         return '<button class="box bill-card" data-a="go" data-p="bill" data-id="' + esc(o.id) + '"><div class="bill-card-head"><b class="mono">' + esc(o.id) + '</b>' + statusPill(o.status) + '</div><div class="hint">' + esc(o.created) + (o.txn ? ' · บิล ' + esc(o.txn) : '') + (o.evening ? ' · รอบเย็น' + esc(evDayText(o.deliverDate)) : '') + '</div>' + (o.status === 'billed' ? payPill(o.pay) : '') + (o.evening && o.payBy && /new|approved/.test(o.status) && o.pay.remain > 0 ? '<span class="pill new">โอนก่อน ' + esc(o.payBy.slice(11, 16)) + ' น.</span>' : '') +
@@ -1405,7 +1407,7 @@
     var p = String(o.promiseAt || ''), d = p.slice(0, 10), t = p.slice(11, 16), day = d && d !== todayStr() ? ' ' + thDate(d) : '';
     if (t && o.slot === 'เที่ยวแรก') return 'ส่งเที่ยวแรก' + (day || ' วันนี้') + ' ถึงก่อน ' + esc(t) + ' น.';
     if (t) return 'ส่งถึงประมาณ ' + esc(t) + ' น.' + day;
-    return 'รอบส่ง: ' + esc(o.slot) + (o.deliverDate && o.deliverDate !== o.date ? ' ' + thDate(o.deliverDate) : '') + (o.pool && !o.delivery ? '<br><b>ส่งรวมรอบ</b> (รอรอบผ่านย่านของคุณ)' : '');
+    return 'รอบส่ง: ' + esc(custSlot(o.slot)) + (o.deliverDate && o.deliverDate !== o.date ? ' ' + thDate(o.deliverDate) : '') + (o.pool && !o.delivery ? '<br><b>ส่งรวมรอบ</b> (รอรอบผ่านย่านของคุณ)' : '');
   }
   /* v3.1.1 บิลที่ยังไม่จ่าย: ยอดที่ต้องโอน + QR + แนบสลิป อยู่บนสุด */
   function payTop(o) {
@@ -1547,7 +1549,8 @@
         h += '<div class="box"><div class="section-heading"><h3>รายการประจำ</h3>' + (st.paused ? '<span class="pill red">หยุดชั่วคราว</span>' : '<span class="pill paid">เปิดอยู่</span>') + '</div>' + itemsHtml(st.items) +
           '<div class="row"><span>วัน</span><span>' + esc(daysText(st.daysArr)) + '</span></div><div class="row"><span>ส่ง</span><span>' + esc(eta ? 'เที่ยวแรก ถึงก่อน ' + H.morningDue + ' น.' : st.slot) + '</span></div>' +
           (st.lastConfirmed ? '<div class="hint">ยืนยันล่าสุดสำหรับวันที่ ' + esc(thDate(st.lastConfirmed)) + '</div>' : '') + '</div>';
-        h += d.willAsk ? '<div class="alert info">วันนี้ 18:00 ร้านจะส่งข้อความถามว่ารับวัน' + dayName(d.tomorrow) + 'ไหม กดปุ่มในข้อความเพื่อยืนยัน</div>'
+        h += d.asked && d.willAsk ? '<div class="alert info">ร้านส่งข้อความถามแล้วว่ารับวัน' + dayName(d.tomorrow) + 'ไหม กดยืนยันในแชต หรือกดปุ่มนี้ <button class="btn sm pri" data-a="go" data-p="standing" data-confirm="' + esc(d.tomorrow) + '">ยืนยันรับวัน' + dayName(d.tomorrow) + '</button></div>' // 3.1.4 หลังร้านถามแล้ว
+          : d.willAsk ? '<div class="alert info">วันนี้ 18:00 ร้านจะส่งข้อความถามว่ารับวัน' + dayName(d.tomorrow) + 'ไหม กดปุ่มในข้อความเพื่อยืนยัน</div>'
           : '<div class="alert warn">คืนนี้ร้านจะยังไม่ถาม เพราะ ' + esc((d.why || []).join(', ')) + (d.friend === false && addFriendUrl() ? ' <button class="text-btn" data-a="addFriend">เพิ่มเพื่อนตอนนี้</button>' : '') + '</div>';
         h += '<button class="btn block" data-a="standingPause">' + (st.paused ? 'เปิดสั่งประจำอีกครั้ง' : 'หยุดชั่วคราว (ร้านปิด / วันหยุด)') + '</button>';
       }
@@ -1783,7 +1786,7 @@
     retry: function () { show(); },
     back: back,
     home: function () { go('home', {}); },
-    go: function (el) { var p = {}; if (el.dataset.id) p.id = el.dataset.id; if (el.dataset.cat) p.cat = el.dataset.cat; go(el.dataset.p, p); },
+    go: function (el) { var p = {}; if (el.dataset.id) p.id = el.dataset.id; if (el.dataset.cat) p.cat = el.dataset.cat; if (el.dataset.confirm) p.confirm = el.dataset.confirm; go(el.dataset.p, p); },
     cat: function (el) { S.params.cat = el.dataset.p; pageCatalog(); },
     qty: function (el) { var box = el.dataset.k === 'b' ? S.cart.bundles : S.cart.lines; var id = el.dataset.p; box[id] = Math.max(0, (box[id] || 0) + Number(el.dataset.d)); if (!box[id]) delete box[id]; saveCart(); show(); },
     toTier: function (el) { S.cart.lines[el.dataset.p] = Number(el.dataset.q); saveCart(); show(); },
