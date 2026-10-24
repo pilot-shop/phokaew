@@ -2,7 +2,9 @@
  * แจ้งออเดอร์ใหม่อัตโนมัติ, ตัวกรองวันที่, ดาวน์โหลด Excel, ตรวจยอดโอน, จัดรอบส่ง, จัดการทีม
  * v3.0.0: โปร Smart/Magnet, สต็อก SAP (F1595/F1077), แต้มผู้แนะนำ, ช่องทาง QR, KPI, พื้นที่จัดส่ง, รีเซ็ตข้อมูล UAT
  * v3.1.0: เมนูซ้าย + โหมดมืด/สว่าง, เปิดบิลขั้นตอนเดียว, ระบบแนะนำการออกรถ (ส่งภายใน 1 ชม. รถ 2 คัน ไม่ใส่เลขไมล์),
- *         ค้นหาราคา/สต๊อก, แท็บโปรโมชั่น (Smart / Magnet), คำขอผูกบัญชีลูกค้าเดิม, ตั้งเวลาทำการ, กดแล้วตอบสนองทันที */
+ *         ค้นหาราคา/สต๊อก, แท็บโปรโมชั่น (Smart / Magnet), คำขอผูกบัญชีลูกค้าเดิม, ตั้งเวลาทำการ, กดแล้วตอบสนองทันที
+ * v3.1.3: เครื่องมือ UAT บนระบบจริงในแท็บเครื่องมือ (ลูกค้าทดสอบ นาฬิกาจำลอง รันงานแบบทดสอบ โควตาจำลอง แชตจำลอง ล้างข้อมูลทดสอบ)
+ */
 (function () {
   'use strict';
   var C = window.PKCore, S = C.S, api = C.api, run = C.run, render = C.render, top = C.top, icon = C.icon, esc = C.esc, fmt = C.fmt, baht = C.baht, toast = C.toast;
@@ -78,6 +80,8 @@
     var st = staffNow(), cn = A.counts || {};
     var badge = { orders: cn.toBill || cn.newOrders, pay: cn.payReview, route: cn.deliveries, members: (cn.pendingMembers || 0) || '', aff: (cn.coinsPending || 0) + (cn.pointsReview || 0), stock: cn.stockAlert ? '!' : cn.stockLow };
     var banner = '';
+    var sim = S.uat && S.uat.sim; // 3.1.3 นาฬิกาจำลอง (เฉพาะผู้จัดการที่ตั้ง)
+    if (sim) banner += '<div class="view-as uat-sim">' + icon('clock') + '<span>นาฬิกาจำลอง <b class="num">' + esc(C.thDate(sim.now.slice(0, 10)) + ' ' + sim.now.slice(11, 16)) + '</b> (เวลาจริง ' + esc(sim.real) + ') ทุกอย่างที่คุณทำตอนนี้ใช้เวลานี้ ปิดเอง ' + esc(sim.until) + '</span><button class="btn sm" data-a="admUat" data-op="clockOff">ปิดนาฬิกาจำลอง</button></div>';
     if (st.viewAs) banner += '<div class="view-as">' + ic('users') + '<span>กำลังทดสอบเป็น <b>' + esc(st.label) + '</b> เห็นแท็บและทำได้เท่าบทบาทนี้</span><button class="btn sm" data-a="admAsRole" data-p="">กลับเป็นผู้จัดการ</button></div>';
     if (A.alert > 0) banner += '<button class="new-banner" data-a="admBanner">' + ic('bell') + '<b>ออเดอร์ใหม่ ' + A.alert + ' รายการ</b><span>แตะเพื่อดู</span></button>';
     var ov = '';
@@ -626,6 +630,7 @@
     var h = can('manage') ? readyBox(d.ready) : '';
     if (S.me.staff && S.me.staff.role === 'manager' && t.testMode) h += '<div class="box test-box"><h3>' + ic('users') + ' ทดสอบบทบาท (เฉพาะผู้จัดการ + TEST_MODE)</h3><div class="hint">ดูหน้าจอและทำรายการได้เท่ากับบทบาทที่เลือก เพื่อทดสอบ/สอนงาน · หลังบ้านลดสิทธิ์ให้จริง (เพิ่มสิทธิ์ไม่ได้) · กลับได้จากแถบด้านบน</div><div class="acts" style="margin-top:8px">' +
       [['cashier', 'พนักงานร้าน'], ['driver', 'พนักงานส่งของ'], ['viewer', 'ดูอย่างเดียว']].map(function (x) { return '<button class="btn sm" data-a="admAsRole" data-p="' + x[0] + '">ดูเป็น ' + x[1] + '</button>'; }).join('') + '</div></div>';
+    if (S.me.staff && S.me.staff.role === 'manager' && t.testMode && d.uatTools) h += uatTools(d.uatTools);
     var c = d.cfg || {}, H = { open: c.SHOP_OPEN || '07:00', last: c.DELIVERY_LAST_ORDER || '17:00', pay: c.PAY_CHASE_FROM || '18:00', close: c.SHOP_CLOSE || '19:00', morning: c.MORNING_DUE || '09:00' };
     if (can('manage')) h += '<form class="box hours-box" data-form="hoursSave"><h3>' + icon('clock') + ' เวลาทำการและการส่ง</h3><div class="hours-grid">' +
       [['SHOP_OPEN', 'ร้านเปิด', H.open], ['DELIVERY_LAST_ORDER', 'ออเดอร์ส่งด่วนสุดท้าย', H.last], ['PAY_CHASE_FROM', 'เริ่มตามเงิน', H.pay], ['SHOP_CLOSE', 'ร้านปิด (รับเองได้ถึง)', H.close], ['MORNING_DUE', 'เที่ยวแรกถึงลูกค้าก่อน', H.morning]].map(function (x) { return '<label class="field"><span>' + x[1] + '</span><input type="time" name="' + x[0] + '" value="' + esc(x[2]) + '" data-old="' + esc(x[2]) + '" required></label>'; }).join('') +
@@ -759,6 +764,42 @@
       '<button class="btn sm" data-a="adm" data-op="runJob" data-job="areaRetag" style="margin-top:6px">ตรวจพื้นที่ทุกที่อยู่ตอนนี้</button></div></div>' +
       '<div class="hint">แก้จุดเส้นเขตได้ที่แท็บ Area ในชีต (lat, lng เรียงตามขอบ) · สาขาอื่นสำหรับแนะนำลูกค้านอกเขตที่แท็บ Branches</div></div>';
   }
+  /* ---------- 3.1.3 เครื่องมือ UAT บนระบบจริง (ผู้จัดการ + TEST_MODE) ---------- */
+  function uatTools(u) {
+    var cn = u.counts || {}, pins = u.pins || {}, H = (S.cat && S.cat.cfg) || {};
+    var st = function (p) { var m = p.member; if (!m) return '<span class="pill">ยังไม่ลงทะเบียน</span>'; if (m.rejected) return '<span class="pill red">ปิดบัญชี</span>'; return '<span class="pill ' + (m.approved ? 'paid' : 'new') + '">' + esc(m.id) + ' ' + (m.approved ? 'อนุมัติแล้ว' : m.pending ? 'รอยืนยันผูกบัญชี' : 'รออนุมัติ') + '</span> <small class="hint">' + esc(m.type === 'Consumer' ? 'บ้าน' : 'ร้าน') + (m.status ? ' ' + esc(m.status === 'new' ? 'ลูกค้าใหม่' : m.status === 'existing' ? 'ลูกค้าเดิม' : m.status) : '') + '</small>'; };
+    var h = '<div class="box test-box uat-tools" id="uat-tools"><h3>' + ic('users') + ' เครื่องมือ UAT บนระบบจริง (เฉพาะผู้จัดการ + TEST_MODE)</h3>' +
+      '<div class="hint">ทดสอบเหมือนวันจริงด้วยบัญชีเดียว ข้อความถึงลูกค้าทดสอบไม่ส่งออก LINE จึงไม่เสียโควตา ข้อมูลทดสอบล้างทิ้งได้ทั้งหมดก่อนเปิดจริง เวลาจริงตอนนี้ ' + esc(String(u.realNow || '').slice(11)) + '</div>';
+    /* ลูกค้าทดสอบ */
+    h += '<h4>1. ลูกค้าทดสอบ (' + (u.personas || []).length + '/' + u.max + ')</h4>' + ((u.personas || []).length ? '<div class="uat-list">' + u.personas.map(function (p) {
+      return '<div class="row uat-row"><span><b>' + esc(p.name) + '</b> ' + st(p) + (p.orders ? ' <small class="hint">ออเดอร์ ' + p.orders + '</small>' : '') + '<small class="hint mono">' + esc(p.uid) + '</small></span><span class="acts"><button class="btn sm blue" data-a="admUatAs" data-p="' + esc(p.uid) + '">สวมบท</button><button class="btn sm" data-a="admUatChat" data-p="' + esc(p.uid) + '">แชต</button><button class="btn sm bad" data-a="admUat" data-op="personaDel" data-uid="' + esc(p.uid) + '" data-confirm="1">ลบ</button></span></div>';
+    }).join('') + '</div>' : '<div class="hint">ยังไม่มี กดเพิ่มแล้วกด "สวมบท" จะเห็นหน้าลูกค้าเหมือนคนเพิ่งเพิ่มเพื่อน OA (ลงทะเบียนใหม่ หรือผูกบัญชีลูกค้าเดิมได้)</div>') +
+      '<div class="acts"><button class="btn sm" data-a="admUat" data-op="personaAdd">' + icon('plus') + ' เพิ่มลูกค้าทดสอบ</button></div>' +
+      '<div class="uat-sub"><b>สมาชิกเดิมทดสอบ</b> <small class="hint">ใช้ทดสอบ "ผูกบัญชีลูกค้าเดิม" ด้วยเบอร์ / รหัส S / ชื่อ</small>' + ((u.legacy || []).length ? u.legacy.map(function (m) { return '<div class="row"><span>' + esc(m.name) + ' <small class="hint">เบอร์ <span class="mono">' + esc(m.phone) + '</span> รหัส <span class="mono">' + esc(m.sno) + '</span></small></span><span>' + (m.linked ? '<span class="pill paid">ผูกแล้ว</span>' : '<span class="pill">ยังไม่ผูก</span>') + '</span></div>'; }).join('') : '') +
+      '<div class="acts"><button class="btn sm" data-a="admUat" data-op="legacyAdd" data-type="FS">' + icon('plus') + ' ร้านเดิม (FS)</button><button class="btn sm" data-a="admUat" data-op="legacyAdd" data-type="Consumer">' + icon('plus') + ' บ้านเดิม (Consumer)</button></div></div>';
+    if (pins.inPin) h += '<div class="uat-sub"><b>พิกัดทดสอบ</b> <small class="hint">วางในช่อง "วางลิงก์ Google Maps หรือพิกัด" ตอนปักหมุด</small>' + [['inPin', 'ในเขตส่ง'], ['bandPin', 'แถบขอบ ' + (pins.bandM || 0) + ' ม.'], ['outPin', 'นอกเขตส่ง']].filter(function (x) { return pins[x[0]]; }).map(function (x) { return '<div class="row"><span>' + x[1] + ' <span class="mono">' + esc(pins[x[0]]) + '</span></span><button class="btn sm" data-a="admUatCopy" data-p="' + esc(pins[x[0]]) + '">คัดลอก</button></div>'; }).join('') + (!pins.area ? '<div class="hint">ยังไม่มีเส้นเขตในแท็บ Area (ทุกพิกัดส่งได้)</div>' : '') + '</div>';
+    /* นาฬิกาจำลอง */
+    var ck = u.clock;
+    h += '<h4>2. นาฬิกาจำลอง</h4><div class="hint">เวลาที่ใช้เฉพาะคำขอของผู้จัดการที่ตั้ง (ทั้งหน้าลูกค้าตอนสวมบทและหลังร้าน) ลูกค้าคนอื่นและงานตั้งเวลาจริงใช้เวลาจริงเสมอ ปิดเองใน ' + u.clockHours + ' ชม.</div>' +
+      (ck ? '<div class="alert warn">เปิดอยู่: ' + esc(C.thDate(ck.now.slice(0, 10)) + ' ' + ck.now.slice(11, 16)) + ' ตั้งโดย ' + esc(ck.by) + ' ปิดเอง ' + esc(ck.until) + ' <button class="btn sm" data-a="admUat" data-op="clockOff">ปิด</button></div>' : '') +
+      '<form class="uat-clock" data-form="uatClock"><label class="field"><span>วัน</span><select name="day"><option value="today">วันนี้</option><option value="tomorrow">พรุ่งนี้</option></select></label><label class="field"><span>เวลา</span><input type="time" name="time" required value="' + esc(ck ? ck.now.slice(11, 16) : H.SHOP_OPEN || '07:00') + '"></label><button class="btn blue" type="submit">ตั้งเวลา</button></form>' +
+      '<div class="acts uat-quick">' + [['today', '06:30', 'ก่อนร้านเปิด'], ['today', H.SHOP_OPEN || '07:00', 'ร้านเปิด'], ['today', '10:00', 'สาย'], ['today', hmAddLocal(H.DELIVERY_LAST_ORDER || '17:00', -5), 'ก่อนหมดเวลาส่งด่วน'], ['today', hmAddLocal(H.DELIVERY_LAST_ORDER || '17:00', 5), 'หลังหมดเวลาส่งด่วน'], ['today', hmAddLocal(H.PAY_CHASE_FROM || '18:00', 5), 'ตามเงิน'], ['today', hmAddLocal(H.SHOP_CLOSE || '19:00', 5), 'ปิดร้าน'], ['tomorrow', H.SHOP_OPEN || '07:00', 'พรุ่งนี้ร้านเปิด']].map(function (x) { return '<button class="btn sm" data-a="admUat" data-op="clock" data-day="' + x[0] + '" data-time="' + x[1] + '">' + (x[0] === 'tomorrow' ? 'พรุ่งนี้ ' : '') + x[1] + ' <small>' + x[2] + '</small></button>'; }).join('') + '</div>';
+    /* รันงานแบบทดสอบ */
+    h += '<h4>3. รันงานแบบทดสอบ</h4><div class="hint">ทำเหมือนงานตั้งเวลาจริง (ดูเวลา/สวิตช์ใน Config) แต่เฉพาะลูกค้าทดสอบ ข้อความไปที่แชตจำลอง ไม่ทับสถานะงานจริง</div>' +
+      (u.jobList || []).map(function (j) { var r = (u.jobs || {})[j.id]; return '<div class="job-row"><div><b>' + esc(j.label) + '</b><small class="hint">' + (r ? 'ล่าสุด ' + esc(r.at) + ' · ' + esc(jobText(r)) : 'ยังไม่เคยรันแบบทดสอบ') + '</small></div><button class="btn sm" data-a="admUat" data-op="job" data-job="' + esc(j.id) + '">รันแบบทดสอบ</button></div>'; }).join('');
+    /* โควตาจำลอง */
+    var q = u.quota;
+    h += '<h4>4. โควตาจำลอง</h4><div class="hint">ทั้งระบบเห็นโควตาเหลือตามที่ตั้ง เพื่อทดสอบการกันโควตา (ระบบงดข้อความชวนกลับ/แต้ม) และบรอดแคสต์ถูกปฏิเสธ ปิดเองใน ' + u.quotaMin + ' นาที</div>' +
+      (q ? '<div class="alert warn">เปิดอยู่: เหลือ ' + q.left + ' จาก ' + q.plan + ' ปิดเอง ' + esc(q.until) + ' <button class="btn sm" data-a="admUat" data-op="quotaOff">ปิด</button></div>' : '') +
+      '<form class="uat-clock" data-form="uatQuota"><label class="field"><span>โควตาที่เหลือ (ข้อความ)</span><input type="number" name="left" min="0" max="100000" inputmode="numeric" value="' + (q ? q.left : 20) + '" required></label><button class="btn blue" type="submit">ตั้งโควตาจำลอง</button></form>';
+    /* แชตจำลอง */
+    h += '<h4>5. แชตจำลอง (' + (cn.chat || 0) + ' ข้อความ)</h4><div class="hint">ข้อความที่ระบบจะส่งถึงลูกค้าทดสอบ และข้อความที่เก็บไว้แทนการส่งระหว่างสวมบท/รันงานทดสอบ</div><div class="acts"><button class="btn sm" data-a="admUatChat" data-p="">' + (A.uatChat ? 'โหลดใหม่' : 'เปิดแชตจำลอง') + '</button>' + (A.uatChat ? '<button class="btn sm" data-a="admUatChatClose">ซ่อน</button>' : '') + '</div>' +
+      (A.uatChat ? '<div class="tc-list">' + (A.uatChat.uid ? '<div class="hint">เฉพาะ ' + esc(((u.personas || []).filter(function (p) { return p.uid === A.uatChat.uid; })[0] || {}).name || A.uatChat.uid) + '</div>' : '') + C.chatList(A.uatChat.rows, true) + '</div>' : '');
+    /* ล้างข้อมูลทดสอบ */
+    h += '<h4>6. ล้างข้อมูลทดสอบ</h4><form data-form="uatClean"><div class="hint">ลบเฉพาะลูกค้าทดสอบ สมาชิกเดิมทดสอบ และออเดอร์ การชำระ แต้ม ที่อยู่ เที่ยวรถ แชตจำลองของเขา ข้อมูลจริงไม่ถูกแตะ (ตอนนี้: ลูกค้าทดสอบ ' + (cn.personas || 0) + ' บัญชี, สมาชิกทดสอบ ' + (cn.members || 0) + ', ออเดอร์ทดสอบ ' + (cn.orders || 0) + ')</div><div class="field" style="max-width:260px"><label for="uat-clean">พิมพ์ TEST เพื่อยืนยัน</label><input id="uat-clean" name="confirm" autocomplete="off" class="mono" placeholder="TEST"></div><button class="btn bad" type="submit">ล้างข้อมูลทดสอบ</button></form></div>';
+    return h;
+  }
+  function hmAddLocal(t, min) { var p = String(t).split(':'), x = Number(p[0]) * 60 + Number(p[1]) + min; x = ((x % 1440) + 1440) % 1440; return ('0' + Math.floor(x / 60)).slice(-2) + ':' + ('0' + (x % 60)).slice(-2); }
   function uatBox(d) {
     if (!d.cfg.TEST_MODE || !d.uat) return '';
     return '<form class="box test-box uat-box" data-form="uatReset"><h3>' + ic('lock') + ' รีเซ็ตข้อมูลเพื่อทดสอบ (UAT) · เฉพาะ TEST_MODE</h3><div class="alert warn">ก่อนกด: ทำสำเนา Google Sheet ไว้ก่อนเสมอ (ไฟล์ → ทำสำเนา) · ไม่แตะ Config / สินค้า / ราคา / เซ็ต / ทีมงาน / กติกา / ช่องทาง / เส้นเขต</div>' +
@@ -1295,6 +1336,42 @@
     A.d = {}; A.at = {}; A.tab = S.asRole === 'driver' ? 'route' : 'orders'; A.pick = {};
     toast(S.asRole ? 'กำลังดูเป็น ' + ROLE_AS[S.asRole][0] + ' (ทดสอบ)' : 'กลับเป็นผู้จัดการแล้ว'); show();
   };
+  /* 3.1.3 เครื่องมือ UAT บนระบบจริง */
+  function uatAfter(r, msg) { return after(r, msg, function (d) { if (r && r.uatTools) d.uatTools = r.uatTools; }); }
+  ACT.admUat = function (el) {
+    if (el.dataset.confirm && !el.dataset.sure) { el.dataset.sure = '1'; el.dataset.label = el.textContent; el.textContent = 'กดอีกครั้งเพื่อยืนยัน'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.textContent = el.dataset.label; } }, 4000); return; }
+    var op = el.dataset.op, data = { op: op };
+    if (op === 'personaDel') data.uid = el.dataset.uid;
+    if (op === 'legacyAdd') data.type = el.dataset.type;
+    if (op === 'job') data.job = el.dataset.job;
+    if (op === 'clock') { data.day = el.dataset.day; data.time = el.dataset.time; }
+    run(op === 'job' ? 'กำลังรันงานแบบทดสอบ...' : 'กำลังทำรายการ...', api('uatTool', data), function (r) {
+      var msg = { personaAdd: r.persona ? 'เพิ่ม ' + r.persona.name + ' แล้ว กด "สวมบท" เพื่อใช้หน้าลูกค้า' : 'เพิ่มแล้ว', personaDel: 'ลบลูกค้าทดสอบและข้อมูลของเขาแล้ว', legacyAdd: r.legacy ? 'เพิ่ม ' + r.legacy.name + ' เบอร์ ' + r.legacy.phone + ' รหัส ' + r.legacy.sno : 'เพิ่มแล้ว',
+        clock: 'ตั้งนาฬิกาจำลองแล้ว', clockOff: 'ปิดนาฬิกาจำลองแล้ว (กลับเป็นเวลาจริง)', quotaOff: 'ปิดโควตาจำลองแล้ว', job: r.job ? 'ผล: ' + jobText(r.job) : 'รันแล้ว' }[op] || 'เรียบร้อย';
+      if (op === 'job') A.jobRes = null;
+      if (A.uatChat && /job|personaDel/.test(op)) A.uatChat = null;
+      return uatAfter(r, msg);
+    }).catch(function () { });
+  };
+  ACT.admUatAs = function (el) { var uid = el.dataset.p; if (!uid) return; toast('กำลังเปิดหน้าลูกค้าในนามลูกค้าทดสอบ...', 2500); C.personaStart(uid); };
+  ACT.admUatChat = function (el) {
+    var uid = el.dataset.p || '';
+    run('กำลังโหลดแชตจำลอง...', api('uatTool', { op: 'chat', uid: uid, limit: 40 }), function (r) { A.uatChat = { uid: uid, rows: r.chat || [] }; draw(); var b = document.getElementById('uat-tools'); if (b && uid) b.querySelector('.tc-list') && b.querySelector('.tc-list').scrollIntoView({ block: 'nearest' }); }).catch(function () { });
+  };
+  ACT.admUatChatClose = function () { A.uatChat = null; draw(); };
+  ACT.admUatCopy = function (el) { C.copyText(el.dataset.p || ''); };
+  FORMS.uatClock = function (f) { var fd = new FormData(f); run('กำลังตั้งนาฬิกาจำลอง...', api('uatTool', { op: 'clock', day: fd.get('day'), time: fd.get('time') }), function (r) { return uatAfter(r, 'ตั้งนาฬิกาจำลองแล้ว'); }).catch(function () { }); };
+  FORMS.uatQuota = function (f) { var fd = new FormData(f); run('กำลังตั้งโควตาจำลอง...', api('uatTool', { op: 'quota', left: fd.get('left') }), function (r) { return uatAfter(r, 'ตั้งโควตาจำลองแล้ว (เหลือ ' + (r.uatTools && r.uatTools.quota ? r.uatTools.quota.left : fd.get('left')) + ')'); }).catch(function () { }); };
+  FORMS.uatClean = function (f) {
+    var v = String(new FormData(f).get('confirm') || '').trim(); if (v !== 'TEST') { toast('พิมพ์คำว่า TEST (ตัวพิมพ์ใหญ่) เพื่อยืนยัน'); return; }
+    run('กำลังล้างข้อมูลทดสอบ...', api('uatTool', { op: 'clean', confirm: 'TEST' }), function (r) { A.uatChat = null; var c = r.cleaned || {}; return uatAfter(r, 'ล้างแล้ว: สมาชิก ' + (c.members || 0) + ', ออเดอร์ ' + (c.orders || 0) + (c.unlinked ? ', ถอดการผูก ' + c.unlinked : '')); }).catch(function () { });
+  };
+  /* นาฬิกาจำลองเปลี่ยน (ตั้ง/ปิด/หมดอายุ) → วันที่ของตัวกรองและหน้าจัดรอบส่งตามวันของนาฬิการ้าน */
+  function onClock(dayBefore) {
+    var t = today(), ch = false;
+    ['from', 'to', 'routeDate'].forEach(function (k) { if (A[k] === dayBefore && dayBefore !== t) { A[k] = t; ch = true; } });
+    if (S.page === 'admin' && !A.locked) { if (ch) refresh(); else if (A.d[key(A.tab)]) draw(); }
+  }
   ACT.admLogout = function (el) {
     if (!el.dataset.sure) { el.dataset.sure = '1'; toast('กดปุ่มออกจากระบบอีกครั้งเพื่อยืนยัน (ล้างข้อมูลหลังร้านในเครื่องนี้)', 3500); setTimeout(function () { delete el.dataset.sure; }, 4000); return; }
     try { Object.keys(localStorage).forEach(function (k) { if (/^(pk2_|cart_)/.test(k)) localStorage.removeItem(k); }); } catch (e) { }
@@ -1544,5 +1621,6 @@
     A.q = e.target.value.trim(); clearTimeout(searchT);
     searchT = setTimeout(function () { var pos = e.target.selectionStart; draw(); var i = document.getElementById('adm-search'); if (i) { i.focus({ preventScroll: true }); try { i.setSelectionRange(pos, pos); } catch (x) { } } }, 250);
   });
-  window.PKAdmin = { show: show, draw: function () { if (A.locked) return; if (A.d[key(A.tab)]) draw(); else show(); }, change: change, xlsx: xlsx, planTrips: planTrips, staffNow: staffNow, _A: A };
+  try { var um = sessionStorage.getItem('pk2_uatmsg'); if (um) { sessionStorage.removeItem('pk2_uatmsg'); setTimeout(function () { toast(um, 5000); }, 800); } } catch (e) { } // 3.1.3 ออกจากสวมบทเพราะเหตุผลจากหลังบ้าน
+  window.PKAdmin = { show: show, draw: function () { if (A.locked) return; if (A.d[key(A.tab)]) draw(); else show(); }, change: change, xlsx: xlsx, planTrips: planTrips, staffNow: staffNow, onClock: onClock, _A: A };
 })();

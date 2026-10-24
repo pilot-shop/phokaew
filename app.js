@@ -2,11 +2,13 @@
  * ข้อมูลทั้งหมดอยู่ใน Google Sheet ผ่าน Apps Script, ดีไซน์ขาว–เขียว
  * v3.0.0: Smart Set / Magnet Set, แต้มสะสม, สมุดที่อยู่ + ปักหมุดบนแผนที่ (MapLibre + OpenFreeMap), ตรวจพื้นที่ส่ง, สต็อก SAP
  * v3.1.1: ชื่อโปรฝั่งลูกค้าเป็นภาษาธรรมดา (ซื้อคู่พิเศษ / ส่วนลดครั้งแรก), ลงทะเบียนสั้นลง, บิลวางยอดและ QR ไว้บนสุด, หน้าแรกปุ่มหลักขึ้นก่อน, ตัวอักษรใหญ่ขึ้น, ปักหมุดบอกระยะจากร้าน
- * v3.1.0: ส่งถึงภายใน 1 ชม. (บอกเวลาส่งถึงในตะกร้า), เลือกที่อยู่แบบ Grab, ผูกบัญชีด้วยเบอร์/รหัส S/ชื่อ, สั่งประจำเพิ่มสินค้าได้, กดแล้วตอบสนองทันที */
+ * v3.1.0: ส่งถึงภายใน 1 ชม. (บอกเวลาส่งถึงในตะกร้า), เลือกที่อยู่แบบ Grab, ผูกบัญชีด้วยเบอร์/รหัส S/ชื่อ, สั่งประจำเพิ่มสินค้าได้, กดแล้วตอบสนองทันที
+ * v3.1.3: สวมบทลูกค้าทดสอบ + แชตจำลอง + นาฬิกาจำลอง (เครื่องมือ UAT ผู้จัดการ), ค้นหาที่อยู่ในเขตส่งก่อน, บิลรับเองที่ร้านบอกเวลามารับ
+ */
 (function () {
   'use strict';
   var CFG = window.APP_CONFIG || {};
-  var APP_VERSION = '3.1.2';
+  var APP_VERSION = '3.1.3';
 
   /* ===== คำนวณตะกร้า (ใช้ร่วมกันทั้งหลังบ้านและหน้า MINI App — แก้ที่เดียวทั้งสองฝั่ง) ===== */
   function daysBetween(a, b) {
@@ -370,7 +372,7 @@
     S.cat.products.forEach(function (p) { if (have.indexOf(p.cat) < 0) have.push(p.cat); });
     return CAT_ORDER.filter(function (k) { return have.indexOf(k) >= 0; }).concat(have.filter(function (k) { return CAT_ORDER.indexOf(k) < 0; }));
   }
-  var S = { me: null, cat: null, page: 'home', params: {}, history: [], cart: null, ui: {}, data: {}, busyN: 0 };
+  var S = { me: null, cat: null, page: 'home', params: {}, history: [], cart: null, ui: {}, data: {}, busyN: 0, asCust: '', uat: null }; // 3.1.3 asCust = ลูกค้าทดสอบที่ผู้จัดการสวมบท · uat = สถานะสวมบท/นาฬิกาจำลองจากหลังบ้าน
   var app = document.getElementById('app');
 
   /* ---------- ไอคอน (SVG ในไฟล์ ไม่โหลดจากภายนอก) ---------- */
@@ -435,6 +437,56 @@
     return h;
   }
 
+  /* ---------- 3.1.3 เครื่องมือ UAT: แถบสวมบท / นาฬิกาจำลอง + แชตจำลอง ---------- */
+  function uatBar() {
+    var u = S.uat || {}, p = S.asCust ? (u.persona || { name: (S.me && S.me.displayName) || 'ลูกค้าทดสอบ' }) : null, sim = u.sim;
+    if (!p && !sim) return '';
+    return '<div id="uat-bar" class="uat-bar" role="status">' + (p ? '<span><b>กำลังสวมบท: ' + esc(p.name) + '</b> ลูกค้าทดสอบ ข้อความไม่ส่งออก LINE</span>' : '') +
+      (sim ? '<span>' + icon('clock') + ' นาฬิกาจำลอง <b class="num">' + esc(thDate(sim.now.slice(0, 10)) + ' ' + sim.now.slice(11, 16)) + '</b> (เวลาจริง ' + esc(sim.real) + ' ปิดเอง ' + esc(sim.until) + ')</span>' : '') +
+      (p ? '<span class="uat-acts"><button class="btn sm" data-a="uatChat">แชตจำลอง</button><button class="btn sm" data-a="uatExit">ออกจากสวมบท</button></span>' : '') + '</div>';
+  }
+  function uatNote(u) {
+    if (S.asCust && (!u || !u.persona) && S.uat && S.uat.persona) u = Object.assign({}, u || {}, { persona: S.uat.persona }); // คำสั่งหลังร้านระหว่างสวมบทไม่ได้แนบชื่อลูกค้าทดสอบ → คงไว้
+    if (u && !u.persona && !u.sim) u = null;
+    var before = JSON.stringify(S.uat || null), after = JSON.stringify(u || null), dayBefore = todayStr();
+    S.uat = u; if (before === after) return;
+    var el = document.getElementById('uat-bar'), h = S.page !== 'admin' ? uatBar() : '';
+    if (el) { if (h) el.outerHTML = h; else el.remove(); } else if (h && app) app.insertAdjacentHTML('afterbegin', h);
+    if (window.PKAdmin && window.PKAdmin.onClock) try { window.PKAdmin.onClock(dayBefore); } catch (e) { }
+  }
+  function personaStart(uid) { sessSet('pk2_ascust', uid); store('pk2_tab', 'tools'); location.href = location.pathname + '?page=home'; }
+  function personaExit(msg) { sessSet('pk2_ascust', ''); S.asCust = ''; store('pk2_tab', 'tools'); if (msg) try { sessionStorage.setItem('pk2_uatmsg', msg); } catch (e) { } location.href = location.pathname + '?page=admin'; }
+  /* การ์ด LINE (Flex) แบบย่อ: ข้อความ ตาราง ปุ่ม รูป · ลิงก์ MINI App ในการ์ดเปิดหน้าเดียวกันในหน้าเว็บนี้ */
+  function chatLink(u) {
+    u = String(u || ''); var m = /^https:\/\/(?:miniapp\.line\.me|liff\.line\.me)\/[^?#]+(\?[^#]*)?/.exec(u);
+    if (m) return location.pathname + (m[1] || '');
+    return /^https?:\/\//.test(u) ? u : '#';
+  }
+  function flexNode(n) {
+    if (!n || typeof n !== 'object') return '';
+    if (n.type === 'carousel') return '<div class="fx-carousel">' + (n.contents || []).map(flexNode).join('') + '</div>';
+    if (n.type === 'bubble') return '<div class="fx-bubble">' + ['header', 'hero', 'body', 'footer'].map(function (k) { return n[k] ? '<div class="fx-' + k + '">' + flexNode(n[k]) + '</div>' : ''; }).join('') + '</div>';
+    if (n.type === 'box') return '<div class="fx-box fx-' + esc(n.layout || 'vertical') + '">' + (n.contents || []).map(flexNode).join('') + '</div>';
+    if (n.type === 'text') { var t = n.contents && n.contents.length ? n.contents.map(function (x) { return x.text || ''; }).join('') : n.text; return '<div class="fx-text fx-' + esc(n.size || 'md') + (n.weight === 'bold' ? ' b' : '') + (n.align === 'end' ? ' r' : '') + '"' + (n.flex !== undefined ? ' style="flex:' + (Number(n.flex) || 0) + '"' : '') + '>' + esc(t).replace(/\n/g, '<br>') + '</div>'; }
+    if (n.type === 'separator') return '<hr class="fx-sep">';
+    if (n.type === 'image') return n.url ? '<img class="fx-img" src="' + esc(chatLink(n.url)) + '" alt="" loading="lazy">' : '';
+    if (n.type === 'button') { var a = n.action || {}; return a.uri ? '<a class="btn sm fx-btn' + (n.style === 'primary' ? ' pri' : '') + '" href="' + esc(chatLink(a.uri)) + '">' + esc(a.label || 'เปิด') + '</a>' : '<span class="btn sm fx-btn">' + esc(a.label || a.text || 'ปุ่ม') + '</span>'; }
+    return '';
+  }
+  function flexHtml(list) {
+    return (Array.isArray(list) ? list : []).map(function (m) {
+      if (m.type === 'text') return '<div class="tc-msg tc-text">' + esc(m.text).replace(/\n/g, '<br>') + '</div>';
+      if (m.type === 'flex') return '<div class="tc-msg tc-flex">' + flexNode(m.contents) + '</div>';
+      return '<div class="tc-msg tc-text">[' + esc(m.type) + '] ' + esc(m.altText || '') + '</div>';
+    }).join('');
+  }
+  var CHAT_TH = { welcome: 'ต้อนรับ', bill: 'บิล', short: 'ยอดขาด', paid: 'รับเงินแล้ว', remind: 'ตามเงิน', standing: 'ถามสั่งประจำ', cancel: 'ยกเลิก', approved: 'ร้านรับออเดอร์', coin: 'เหรียญ', refnotify: 'แจ้งผู้ชวน', pool: 'รอรวมรอบ', winback: 'ชวนกลับ', evening: 'รอบเย็น',
+    refpoints: 'แต้มผู้ชวน', out: 'ออกรถ', magnetremind: 'เตือนส่วนลดครั้งแรก', broadcast: 'บรอดแคสต์', summary: 'สรุปยอด', 'staff-order': 'แจ้งออเดอร์ใหม่', 'staff-pay': 'แจ้งโอน', 'email-order': 'อีเมลออเดอร์ใหม่', 'email-pay': 'อีเมลแจ้งโอน' };
+  function chatList(rows, withName) {
+    if (!rows || !rows.length) return '<div class="hint">ยังไม่มีข้อความ</div>';
+    return rows.map(function (r) { var ty = CHAT_TH[r.type] || CHAT_TH[String(r.type).replace(/-text$/, '')] || r.type; return '<div class="tc-row' + (r.real ? ' real' : '') + '"><div class="tc-meta"><b>' + (withName ? esc(r.name) + ' ' : '') + '</b><span class="hint">' + esc(r.time.slice(5, 16)) + ' ' + esc(ty) + (r.by ? ' (' + esc(r.by) + ')' : '') + '</span></div>' + flexHtml(r.msgs) + '</div>'; }).join('');
+  }
+
   /* ---------- ตัวช่วย ---------- */
   function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function fmt(n) { n = Number(n) || 0; return Math.abs(n - Math.round(n)) > 0.004 ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : Math.round(n).toLocaleString('en-US'); }
@@ -482,8 +534,12 @@
   }
   try { new MutationObserver(function (recs) { recs.forEach(function (r) { if (r.type === 'characterData') { if (r.target.nodeValue && r.target.nodeValue.indexOf('\u00b7') >= 0) undot(r.target); return; } Array.prototype.forEach.call(r.addedNodes, undot); }); }).observe(document.documentElement, { childList: true, subtree: true, characterData: true }); } catch (e) { }
   function store(key, val) { try { if (val === undefined) { var v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } if (val === null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; } return null; }
-  function todayStr() { return (S.cat && S.cat.today) || new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10); }
-  function nowHM() { return new Date(Date.now() + 7 * 3600e3).toISOString().slice(11, 16); }
+  /* 3.1.3 นาฬิกาจำลอง (เฉพาะผู้จัดการที่ตั้งไว้ · หลังบ้านบอกส่วนต่างเวลามากับทุกคำตอบ) */
+  function clockNow() { return Date.now() + ((S.uat && S.uat.sim && Number(S.uat.sim.ms)) || 0); }
+  function todayStr() { return S.uat && S.uat.sim ? new Date(clockNow() + 7 * 3600e3).toISOString().slice(0, 10) : (S.cat && S.cat.today) || new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10); }
+  function nowHM() { return new Date(clockNow() + 7 * 3600e3).toISOString().slice(11, 16); }
+  function sessGet(k) { try { return sessionStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function sessSet(k, v) { try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) { } }
   function thDate(d) { var M = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']; d = String(d || ''); return d.length >= 10 ? Number(d.slice(8, 10)) + ' ' + M[Number(d.slice(5, 7)) - 1] : d; }
   function dayName(d) { return ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสฯ', 'ศุกร์', 'เสาร์'][new Date(String(d).slice(0, 10) + 'T00:00:00Z').getUTCDay()]; }
   function isStaff() { return !!(S.me && S.me.staff); }
@@ -535,6 +591,7 @@
     var isRead = !!READS[action], body = Object.assign({ action: action, cv: APP_VERSION }, data || {}); // cv: หลังบ้านจดว่ามีคนใช้หน้าเว็บเวอร์ชันไหน (3.1.2)
     if (!isRead) body.rid = body.rid || rid();
     if (S.asRole) body.asRole = S.asRole; // ผู้จัดการทดสอบบทบาทอื่น (หลังบ้านลดสิทธิ์ให้เท่านั้น)
+    if (S.asCust) body.asCustomer = S.asCust; // 3.1.3 ผู้จัดการสวมบทลูกค้าทดสอบ (หลังบ้านตรวจสิทธิ์ทุกคำขอ)
     var tries = opt.tries || (isRead ? 4 : 3), t0 = Date.now();
     function attempt(n) {
       try { body.token = liff.getAccessToken() || ''; } catch (e) { body.token = ''; }
@@ -544,8 +601,9 @@
         .then(function (r) { if (!r.ok) throw netErr('HTTP ' + r.status, r.status); return r.text(); })
         .then(function (t) {
           var j; try { j = JSON.parse(t); } catch (x) { throw netErr(/<html/i.test(t) ? 'HTML' : 'NOTJSON'); }
-          if (!j || !j.ok) { var e = new Error((j && j.error) || 'เกิดข้อผิดพลาด'); e.code = (j && j.code) || 'SERVER'; e.detail = j && j.detail; e.server = true; throw e; }
+          if (!j || !j.ok) { var e = new Error((j && j.error) || 'เกิดข้อผิดพลาด'); e.code = (j && j.code) || 'SERVER'; e.detail = j && j.detail; e.server = true; if (e.code === 'PERSONA' && S.asCust) setTimeout(function () { personaExit(e.message); }, 0); throw e; }
           if (timer) clearTimeout(timer);
+          if (action !== 'catalog' && action !== 'ping') uatNote(j.uatMode || null);
           perfAdd(action, Date.now() - t0, j.ms, true);
           return j;
         })
@@ -639,7 +697,7 @@
   function saveCart() { store(cartKey(), S.cart); }
   function calcNow() {
     var m = S.me && S.me.member;
-    return calcCart(S.cart, { products: S.cat.products, bundles: S.cat.bundles, cfg: S.cat.cfg, today: S.cat.today, coinBal: S.me ? S.me.coinBal : 0, pointsBal: ptsBal(), featured: featuredMap(),
+    return calcCart(S.cart, { products: S.cat.products, bundles: S.cat.bundles, cfg: S.cat.cfg, today: todayStr(), coinBal: S.me ? S.me.coinBal : 0, pointsBal: ptsBal(), featured: featuredMap(),
       member: m ? { type: m.type, couponLeft: m.couponLeft, couponExpires: m.couponExpires, sourceKind: m.sourceKind, inZone: m.inZone, regDate: m.regDate, offer: S.me.offer || null, magnet: S.cat.cfg.MAGNET_ENABLED === false ? '' : m.magnet, magnetExpires: m.magnetExpires } : null });
   }
   function prod(sku) { return S.cat.products.filter(function (p) { return p.sku === sku; })[0]; }
@@ -650,7 +708,7 @@
   }
   function waveNow() {
     var W = waves(), t = nowHM(), today = todayStr(), i;
-    function tmr() { var d = new Date(); d.setDate(d.getDate() + 1); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+    function tmr() { return dayAfter(today); } // 3.1.3 ใช้วันเดียวกับนาฬิการ้าน (เวลาไทย / นาฬิกาจำลอง)
     for (i = 1; i < W.length; i++) if (t < W[i].cutoff) return { slot: W[i].name, date: today, depart: W[i].depart };
     if (t < W[0].cutoff) return { slot: W[0].name, date: tmr(), depart: W[0].depart };
     i = Math.min(1, W.length - 1); return { slot: W[i].name, date: tmr(), depart: W[i].depart };
@@ -710,7 +768,7 @@
     }, 200);
   }
   function couponStrip(cp) {
-    if (!cp || !(cp.left > 0) || !(cp.expires >= S.cat.today)) return '';
+    if (!cp || !(cp.left > 0) || !(cp.expires >= todayStr())) return '';
     var txt = cp.text || ('ลด ' + cp.pct + '%' + (cp.cap ? ' (สูงสุด ' + baht(cp.cap) + ')' : ''));
     return '<div class="coupon-strip">' + icon('wallet') + '<span><b>ส่วนลดลูกค้าใหม่ บิลถัดไป' + esc(txt) + '</b><small>ใช้ได้อีก ' + cp.left + ' บิล · ' + (cp.scope === 'all' ? 'ทุกสินค้า' : 'สินค้าร่วมรายการและเซ็ตคุ้ม') + (cp.minBill > 0 ? ' · ขั้นต่ำ ' + baht(cp.minBill) : '') + ' · ถึง ' + esc(thDate(cp.expires)) + '</small></span></div>';
   }
@@ -908,7 +966,7 @@
     var changeControl = active && active.dataset ? active.dataset.chg : null;
     if (S.page !== 'admin') document.documentElement.removeAttribute('data-theme'); // ธีมมืด/สว่างที่เลือกเอง ใช้เฉพาะหน้าหลังร้าน
     document.documentElement.classList.toggle('cust', S.page !== 'admin'); // v3.1.1 ตัวอักษรฝั่งลูกค้าอ่านง่ายขึ้น
-    app.innerHTML = html + navBar();
+    app.innerHTML = (S.page !== 'admin' ? uatBar() : '') + html + navBar(); // 3.1.3 แถบสวมบท/นาฬิกาจำลอง (หลังร้านแสดงในแถบของหลังร้าน)
     app.dataset.page = S.page;
     scrollers.forEach(function (saved) { var el = app.querySelector(saved.selector); if (el) el.scrollLeft = saved.left; });
     var main = app.querySelector('.wrap'); if (main) { main.setAttribute('role', 'main'); main.id = 'main-content'; }
@@ -1022,7 +1080,7 @@
     var cfg = S.cat.cfg, g = magnetMine(), cp = S.me.coupon, sm = S.cat.smart, rows = [];
     if (g) rows.push(['wallet', magnetName(g.pct), 'ลูกค้าใหม่ ใช้ได้ 1 ครั้ง' + (g.expires ? ' ถึง ' + thDate(g.expires) : ''), 'catalog', 'promo']);
     if (smartOn() && sm && (sm.items || []).length) rows.push(['set', smartName(sm.pct), 'ซื้อสินค้าหลักทุก ' + (Number(cfg.SMART_TRIGGER_KG) || 1) + ' กก. ลดได้ 1 ชิ้น วันนี้ ' + sm.items.length + ' รายการ', 'catalog', 'promo']);
-    if (cp && cp.left > 0 && cp.expires >= S.cat.today) rows.push(['coin', 'ส่วนลดลูกค้าใหม่ บิลถัดไป' + (cp.text || ('ลด ' + cp.pct + '%' + (cp.cap ? ' (สูงสุด ' + baht(cp.cap) + ')' : ''))), 'ใช้ได้อีก ' + cp.left + ' บิล ถึง ' + thDate(cp.expires), 'wallet', '']);
+    if (cp && cp.left > 0 && cp.expires >= todayStr()) rows.push(['coin', 'ส่วนลดลูกค้าใหม่ บิลถัดไป' + (cp.text || ('ลด ' + cp.pct + '%' + (cp.cap ? ' (สูงสุด ' + baht(cp.cap) + ')' : ''))), 'ใช้ได้อีก ' + cp.left + ' บิล ถึง ' + thDate(cp.expires), 'wallet', '']);
     if (!rows.length) return '';
     return '<section class="box promo-strip"><div class="section-heading"><h2>สิทธิ์ของคุณวันนี้</h2><button class="text-btn" data-a="go" data-p="wallet">ดูเงื่อนไข</button></div>' + rows.map(function (r) {
       return '<button class="ps-row" data-a="go" data-p="' + r[3] + '"' + (r[4] ? ' data-cat="' + r[4] + '"' : '') + '><span class="ps-ic">' + icon(r[0]) + '</span><span class="ps-txt"><b>' + esc(r[1]) + '</b><small>' + esc(r[2]) + '</small></span>' + icon('chev') + '</button>';
@@ -1330,8 +1388,15 @@
   function whenShort(o) {
     if (o.status === 'cancelled' || o.delivery === 'done') return '';
     if (o.mode === 'pickup') return 'รับที่จุด ' + esc(o.pickup) + ' รอบ ' + esc(S.cat.cfg.CONDO_TIME);
-    if (o.mode === 'shop') { var p = String(o.promiseAt || ''); return o.status === 'paid' ? '' : 'รับเองที่ร้าน' + (p && /new|approved|billed/.test(o.status) ? ' มารับได้ตั้งแต่ ' + esc(p.slice(11, 16)) + ' น.' + (p.slice(0, 10) !== todayStr() ? ' ' + thDate(p.slice(0, 10)) : '') : ''); }
+    if (o.mode === 'shop') return pickupWhen(o);
     return billWhen(o);
+  }
+  /* 3.1.3 รับเองที่ร้าน: บอกเวลามารับจนกว่าจะเลยวันนัด (รวมบิลที่จ่ายแล้วแต่ยังไม่ได้มารับ) */
+  function pickupWhen(o) {
+    if (o.status === 'cancelled' || o.delivery === 'done') return '';
+    var p = String(o.promiseAt || ''), d = p.slice(0, 10), t = p.slice(11, 16), today = todayStr();
+    if (o.status === 'paid' && (!t || d < today)) return '';
+    return 'รับเองที่ร้าน' + (t && d >= today ? ' มารับได้ตั้งแต่ ' + esc(t) + ' น.' + (d !== today ? ' ' + thDate(d) : '') : '');
   }
   /* หน้าบิล: ส่งเมื่อไร (ตามที่ร้านแจ้งตอนสั่ง / ตอนรถออก) */
   function billWhen(o) {
@@ -1376,7 +1441,7 @@
         (o.coupon ? '<div class="row disc"><span>คูปองส่วนลด' + (o.couponStep ? ' บิลที่ ' + o.couponStep : '') + '</span><span>−' + baht(o.coupon) + '</span></div>' : '') + (o.coinUse ? '<div class="row disc"><span>ส่วนลดสะสม</span><span>−' + baht(o.coinUse * cfg.COIN_VALUE) + '</span></div>' : '') +
         (o.pointsUse ? '<div class="row disc"><span>ใช้แต้ม ' + fmtPts(o.pointsUse) + ' แต้ม</span><span>−' + baht(o.pointsDisc) + '</span></div>' : '') +
         '<div class="row"><span>ยอดประมาณ</span><span>' + baht(o.est) + '</span></div>' + (o.txn ? adjRow(o) + '<div class="row"><span>เลขที่บิล</span><span class="mono">' + esc(o.txn) + '</span></div><div class="row tot"><span>ยอดตามบิล (หลังชั่ง)</span><span>' + baht(o.actual) + '</span></div>' : '') +
-        (o.mode === 'pickup' ? '<div class="hint">รับที่จุด ' + esc(o.pickup) + ' รอบ ' + esc(cfg.CONDO_TIME) + '</div>' : o.mode === 'shop' ? '<div class="hint">รับเองที่ร้าน' + (o.promiseAt && /new|approved/.test(o.status) ? ' มารับได้ตั้งแต่ ' + esc(String(o.promiseAt).slice(11, 16)) + ' น.' + (String(o.promiseAt).slice(0, 10) !== todayStr() ? ' ' + thDate(String(o.promiseAt).slice(0, 10)) : '') : '') + '</div>' : '<div class="hint">' + (o.ship && o.ship.text ? 'ส่งที่: ' + esc(o.ship.text) + '<br>' : '') + billWhen(o) + '</div>') + '</div>';
+        (o.mode === 'pickup' ? '<div class="hint">รับที่จุด ' + esc(o.pickup) + ' รอบ ' + esc(cfg.CONDO_TIME) + '</div>' : o.mode === 'shop' ? '<div class="hint">' + (pickupWhen(o) || 'รับเองที่ร้าน') + '</div>' : '<div class="hint">' + (o.ship && o.ship.text ? 'ส่งที่: ' + esc(o.ship.text) + '<br>' : '') + billWhen(o) + '</div>') + '</div>';
       if ((o.status === 'new' || o.status === 'approved') && !pre) h += '<div class="alert info">ร้านยังไม่เปิดบิล ยอดจริงจะส่งเข้าแชตหลังชั่งของ</div>';
       if (o.status === 'billed' || o.status === 'paid' || (pre && (p.received > 0 || p.remain > 0))) h += payRows(o);
       if (o.status === 'paid') h += '<div class="alert ok">ชำระครบแล้ว ' + esc(o.paidAt) + ' ขอบคุณค่ะ</div>';
@@ -1430,7 +1495,7 @@
     h += '<div class="box"><h3>เพื่อนที่แนะนำ (' + r.refs.length + ')</h3>' + (r.refs.length ? r.refs.map(function (x) { var s = stTh[x.status] || ['', x.status]; return '<div class="row"><span>' + esc(x.name) + '<br><small class="hint">' + (x.type === 'Consumer' ? 'บ้าน (B2C)' : 'ร้าน (B2B)') + ' · ' + esc(thDate(x.regDate)) + '</small></span><span><span class="pill ' + s[0] + '">' + s[1] + '</span>' + (x.points ? '<br><small class="ok-t">+' + fmtPts(x.points) + ' แต้ม</small>' : '') + '</span></div>'; }).join('') : '<div class="hint">ยังไม่มี · ส่ง QR หรือลิงก์ให้ร้านคู่ค้า/ลูกค้าบ้านใกล้ ๆ</div>') + '</div>';
     return h;
   }
-  function canShare() { try { return liff.isApiAvailable('shareTargetPicker'); } catch (e) { return false; } }
+  function canShare() { if (S.asCust) return false; try { return liff.isApiAvailable('shareTargetPicker'); } catch (e) { return false; } } // 3.1.3 สวมบท: ไม่เปิดหน้าเลือกเพื่อน LINE (ใช้คัดลอกลิงก์แทน)
   var PT_KIND = { earn: 'แต้มจากบิล', use: 'ใช้ลดบิล', refB2C: 'แนะนำลูกค้าบ้าน', refB2B1: 'แนะนำร้านใหม่ (งวด 1)', refB2B2: 'แนะนำร้านใหม่ (งวด 2)', adjust: 'ร้านปรับแต้ม' };
   function magnetCard(mg) {
     var st = { AVAILABLE: ['paid', 'ใช้ได้' + (mg.expires ? ' ถึง ' + thDate(mg.expires) : '')], RESERVED: ['appr', 'จองไว้กับออเดอร์ ' + (mg.order || '')], USED: ['', 'ใช้สิทธิ์แล้ว'], EXPIRED: ['new', 'หมดอายุแล้ว'] }[mg.status] || ['', mg.status];
@@ -1581,6 +1646,13 @@
     if (chip) chip.innerHTML = areaChip(P.lat, P.lng); if (co) { co.textContent = pinDist(P.lat, P.lng); co.dataset.ll = P.lat.toFixed(5) + ', ' + P.lng.toFixed(5); } if (ok) ok.disabled = false;
   }
   /* v3.1.1 บอกระยะจากร้าน (ระยะถนนโดยประมาณ = เส้นตรง x 1.3 แบบเดียวกับการคิดเวลาส่ง) แทนพิกัดตัวเลข */
+  /* 3.1.3 กรอบค้นหาที่อยู่ = เส้นเขตส่ง + แถบขอบ + 500 ม. (ไม่มีเส้นเขต: รอบร้านราว 5 กม.) → [ซ้าย, บน, ขวา, ล่าง] ตามรูปแบบ viewbox ของ Nominatim */
+  function searchBox(A, sh) {
+    var lat0 = Number(sh[0]), lng0 = Number(sh[1]), poly = (A && A.poly) || [], pad = ((Number(A && A.band) || 0) + 500) / 111320, padL = pad / Math.cos(lat0 * Math.PI / 180);
+    if (poly.length < 3) return [lng0 - 0.046, lat0 + 0.045, lng0 + 0.046, lat0 - 0.045];
+    var la = poly.map(function (p) { return Number(p[0]); }).concat([lat0]), ln = poly.map(function (p) { return Number(p[1]); }).concat([lng0]);
+    return [Math.min.apply(null, ln) - padL, Math.max.apply(null, la) + pad, Math.max.apply(null, ln) + padL, Math.min.apply(null, la) - pad].map(function (v) { return Math.round(v * 1e5) / 1e5; });
+  }
   function haversineKm(a, b, lat, lng) { var R0 = 6371, r = Math.PI / 180, dLa = (lat - a) * r, dLo = (lng - b) * r, x = Math.sin(dLa / 2) * Math.sin(dLa / 2) + Math.cos(a * r) * Math.cos(lat * r) * Math.sin(dLo / 2) * Math.sin(dLo / 2); return 2 * R0 * Math.asin(Math.min(1, Math.sqrt(x))); }
   function pinDist(lat, lng) {
     var sh = (S.cat.cfg.AREA || {}).shop || [], a = Number(sh[0]), b = Number(sh[1]);
@@ -1765,6 +1837,18 @@
       if (p === 'catalog') return go('catalog', {});
     },
     modalClose: function () { var x = document.querySelector('.modal'); if (x) x.remove(); },
+    /* 3.1.3 สวมบทลูกค้าทดสอบ */
+    uatExit: function () { personaExit(''); },
+    uatChat: function () {
+      busy(true, 'กำลังโหลดแชตจำลอง...');
+      api('uatTool', { op: 'chat', uid: S.asCust, limit: 30 }).then(function (r) {
+        busy(false);
+        var m = document.createElement('div'); m.className = 'modal chat-modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); m.setAttribute('aria-labelledby', 'tc-h');
+        m.innerHTML = '<div class="modal-in"><h3 id="tc-h">แชตจำลอง: ' + esc((S.uat && S.uat.persona && S.uat.persona.name) || '') + '</h3><div class="hint">ข้อความที่ร้านส่งถึงลูกค้าทดสอบ (ล่าสุดอยู่บน) ไม่ได้ส่งออก LINE จริง</div><div class="tc-list">' + chatList(r.chat, false) + '</div><button class="btn block" data-a="modalClose">ปิด</button></div>';
+        m.addEventListener('click', function (e) { if (e.target === m) m.remove(); });
+        document.body.appendChild(m); var f = m.querySelector('[data-a=modalClose]'); if (f) f.focus();
+      }).catch(function (e) { busy(false); toast(friendly(e), 4500); });
+    },
     /* v3: ที่อยู่ / ปักหมุด / โปร */
     openLink: function (el) { if (el.dataset.u) openUrl(el.dataset.u, true); },
     shipPick: function () { S.ui.shipPick = !S.ui.shipPick; pageCart(); },
@@ -1877,19 +1961,19 @@
       var P = S.ui.pin, q = String(new FormData(f).get('q') || '').trim(); if (!q || !P) return;
       if (Date.now() - (P.lastQ || 0) < 1200) { toast('รอสักครู่แล้วค้นหาใหม่'); return; } // นโยบาย Nominatim: ไม่เกิน 1 ครั้ง/วินาที
       P.lastQ = Date.now(); P.q = q; busy(true, 'กำลังค้นหา...');
-      var A = S.cat.cfg.AREA || {}, sh = A.shop && Number(A.shop[0]) ? A.shop : [13.8008, 100.6458], vb = [Number(sh[1]) - 0.15, Number(sh[0]) + 0.12, Number(sh[1]) + 0.15, Number(sh[0]) - 0.12].join(',');
-      var look = function (bounded) { // 3.1.2: ค้นรอบร้านก่อน (bounded) ไม่พบค่อยค้นทั้งประเทศ · เรียงใกล้ร้านก่อน + บอกระยะ
+      var A = S.cat.cfg.AREA || {}, sh = A.shop && Number(A.shop[0]) ? A.shop : [13.8008, 100.6458], vb = searchBox(A, sh).join(',');
+      var look = function (bounded) { // 3.1.3: ค้นในเขตส่งก่อน (กรอบเส้นเขต + แถบขอบ) ไม่พบค่อยค้นทั้งประเทศ · เรียงใกล้ร้านก่อน + บอกระยะ + ในเขต/นอกเขต
         return fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=th&accept-language=th&viewbox=' + vb + (bounded ? '&bounded=1' : '') + '&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' }, referrerPolicy: 'strict-origin-when-cross-origin' })
           .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
       };
       look(true).then(function (list) { if (list && list.length) return list; P.far = true; return new Promise(function (res) { setTimeout(res, 1200); }).then(function () { return look(false); }); })
         .then(function (list) {
           var near = !P.far; P.far = false;
-          busy(false); P.results = (list || []).map(function (x) { var la = Number(x.lat), ln = Number(x.lon); return { name: String(x.display_name || ''), lat: la, lng: ln, km: la && ln ? haversineKm(Number(sh[0]), Number(sh[1]), la, ln) : 999 }; }).filter(function (x) { return x.lat && x.lng; })
+          busy(false); P.results = (list || []).map(function (x) { var la = Number(x.lat), ln = Number(x.lon); return { name: String(x.display_name || ''), lat: la, lng: ln, km: la && ln ? haversineKm(Number(sh[0]), Number(sh[1]), la, ln) : 999, area: la && ln && A.poly && A.poly.length >= 3 ? geoArea(la, ln, A.poly, A.band).status : '' }; }).filter(function (x) { return x.lat && x.lng; })
             .sort(function (a, b) { return a.km - b.km; });
-          if (!near && P.results.length) toast('ไม่พบใกล้ร้าน แสดงผลที่อื่นแทน ตรวจระยะก่อนเลือก', 3500);
+          if (!near && P.results.length) toast('ไม่พบในเขตส่งของร้าน แสดงผลที่อื่นแทน ตรวจระยะก่อนเลือก', 4000);
           var box = document.getElementById('pin-results');
-          if (box) box.innerHTML = P.results.length ? P.results.map(function (x, i) { return '<button type="button" class="pin-res" data-a="pinUse" data-i="' + i + '">' + icon('pin') + '<span>' + esc(x.name) + (x.km < 999 ? '<small class="hint">ห่างร้านประมาณ ' + (Math.round(x.km * 1.3 * 10) / 10) + ' กม.</small>' : '') + '</span></button>'; }).join('') : '<div class="hint">ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น หรือเลื่อนแผนที่เอง</div>';
+          if (box) box.innerHTML = P.results.length ? P.results.map(function (x, i) { var tag = x.area === 'in' ? '<span class="pill paid">ในเขตส่ง</span>' : x.area === 'band' ? '<span class="pill new">แถบขอบเขต</span>' : x.area === 'out' ? '<span class="pill red">นอกเขตส่ง</span>' : ''; return '<button type="button" class="pin-res" data-a="pinUse" data-i="' + i + '">' + icon('pin') + '<span>' + esc(x.name) + (x.km < 999 ? '<small class="hint">ห่างร้านประมาณ ' + (Math.round(x.km * 1.3 * 10) / 10) + ' กม. ' + tag + '</small>' : '') + '</span></button>'; }).join('') : '<div class="hint">ไม่พบสถานที่ ลองพิมพ์ชื่ออื่น หรือเลื่อนแผนที่เอง</div>';
         })
         .catch(function () { busy(false); toast('ค้นหาไม่สำเร็จ ลองเลื่อนแผนที่เอง หรือวางลิงก์ Google Maps แทน', 4000); });
     },
@@ -2006,7 +2090,7 @@
 
   /* ---------- เริ่มต้น: เปิดเร็วด้วยข้อมูลล่าสุดในเครื่อง แล้วค่อยอัปเดต ---------- */
   var BOOT_KEY = 'pk2_boot';
-  function saveBoot() { if (S.cat && S.me) store(BOOT_KEY, { v: APP_VERSION, uid: S.me.userId, cat: S.cat, me: S.me, at: Date.now() }); }
+  function saveBoot() { if (S.cat && S.me && !S.asCust) store(BOOT_KEY, { v: APP_VERSION, uid: S.me.userId, cat: S.cat, me: S.me, at: Date.now() }); }
   function validCat(c) { return c && c.cfg && Array.isArray(c.products) && Array.isArray(c.bundles); }
   function validMe(m) { return m && typeof m.userId === 'string'; }
   function fatal(msg, e) {
@@ -2031,7 +2115,8 @@
       document.head.appendChild(sdk); return;
     }
     var cached = store(BOOT_KEY), fresh = cached && cached.v === APP_VERSION && validCat(cached.cat) && Date.now() - cached.at < 12 * 3600e3;
-    S.params = readParams(); S.page = S.params.page || 'home'; S.asRole = (store('pk2_asrole') || '');
+    S.params = readParams(); S.page = S.params.page || 'home'; S.asRole = (store('pk2_asrole') || ''); S.asCust = sessGet('pk2_ascust'); // 3.1.3 สวมบทลูกค้าทดสอบ (เฉพาะแท็บนี้)
+    if (S.asCust) fresh = false; // สวมบท: ไม่ใช้ข้อมูลของบัญชีจริงที่เก็บในเครื่อง
     if (fresh && validMe(cached.me) && !S.params.inv && !S.params.ref && !S.params.src && !S.params.ch) { // เปิดทันทีจากข้อมูลล่าสุดในเครื่อง ไม่ต้องรอ LINE (เร็วขึ้น ~1 วินาที)
       S.cat = cached.cat; S.me = cached.me; S.fromCache = true; S.early = true; loadCart(); show();
     }
@@ -2075,7 +2160,7 @@
   }
   /* ให้ admin.js ใช้ตัวช่วยชุดเดียวกัน */
   window.PKCore = { S: S, api: api, run: run, render: render, top: top, icon: icon, esc: esc, fmt: fmt, baht: baht, toast: toast, busy: busy, go: go, show: show, fail: fail, friendly: friendly, techNote: techNote,
-    statusPill: statusPill, qrSvg: qrSvg, copyText: copyText, openUrl: openUrl, appLink: appLink, imgUrl: imgUrl, thumb: thumb, prod: prod, thDate: thDate, store: store, refreshMe: refreshMe,
+    statusPill: statusPill, qrSvg: qrSvg, flexHtml: flexHtml, chatList: chatList, personaStart: personaStart, personaExit: personaExit, clockNow: clockNow, copyText: copyText, openUrl: openUrl, appLink: appLink, imgUrl: imgUrl, thumb: thumb, prod: prod, thDate: thDate, store: store, refreshMe: refreshMe,
     zoneName: zoneName, zoneSelect: zoneSelect, canShare: canShare, ACT: ACT, FORMS: FORMS, todayStr: todayStr, nowHM: nowHM, version: APP_VERSION,
     adminFrame: adminFrame, adminTools: adminTools, adminTheme: adminTheme, isDark: isDark, plainSep: plainSep, undot: undot, hoursOf: hoursOf, etaText: etaText,
     perf: PERF, evDayText: evDayText, offerText: offerText, rewardText: rewardText, geoArea: geoArea, areaPill: areaPill, fmtPts: fmtPts, promoPrice: promoPrice, loadSlipLib: loadSlipLib, txnNorm: function (v, n) { var d = String(v || '').replace(/\D/g, ''); n = n || 7; return d.length >= n ? d.slice(-n) : d.length >= 4 ? ('0000000000' + d).slice(-n) : ''; } };
