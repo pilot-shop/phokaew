@@ -3,6 +3,7 @@
  * v3.0.0: Smart Set / Magnet Set, แต้มสะสม, สมุดที่อยู่ + ปักหมุดบนแผนที่ (MapLibre + OpenFreeMap), ตรวจพื้นที่ส่ง, สต็อก SAP
  * v3.1.1: ชื่อโปรฝั่งลูกค้าเป็นภาษาธรรมดา (ซื้อคู่พิเศษ / ส่วนลดครั้งแรก), ลงทะเบียนสั้นลง, บิลวางยอดและ QR ไว้บนสุด, หน้าแรกปุ่มหลักขึ้นก่อน, ตัวอักษรใหญ่ขึ้น, ปักหมุดบอกระยะจากร้าน
  * v3.1.0: ส่งด่วนในวัน (บอกเวลาส่งถึงในตะกร้า), เลือกที่อยู่แบบ Grab, ผูกบัญชีด้วยเบอร์/รหัส S/ชื่อ, สั่งประจำเพิ่มสินค้าได้, กดแล้วตอบสนองทันที
+ * v3.1.6: ปิดข้อสังเกต UAT ระบบจริง 3.1.5 (ตารางจัดเวลาส่ง, ข้อความส่งรวมรอบเว้นวรรค, แถบนาฬิกาจำลองไม่หายในแท็บสวมบท)
  * v3.1.5: ปิดข้อสังเกต UAT ระบบจริง 3.1.4 (ค้นคำเรียกสินค้า, ส่งรวมรอบบอกเวลาเร็วสุด, ลดเท่ากันเลือกซื้อคู่พิเศษ, ถอดบัญชีร่วมแล้วรายการหายทันที)
  * v3.1.4: ลูกค้าไม่เห็นเป้าเวลาส่งของร้าน (บอกเวลาที่คาดว่าจะถึง), ผ่อนผันหมุดเดิมเฉพาะลูกค้าเดิมที่ยังไม่มีสมุดที่อยู่, ปุ่มยืนยันสั่งประจำหลังร้านถาม, แจ้งกำลังอัปเดตรายการบิล
  * v3.1.3: สวมบทลูกค้าทดสอบ + แชตจำลอง + นาฬิกาจำลอง (เครื่องมือ UAT ผู้จัดการ), ค้นหาที่อยู่ในเขตส่งก่อน, บิลรับเองที่ร้านบอกเวลามารับ
@@ -10,7 +11,7 @@
 (function () {
   'use strict';
   var CFG = window.APP_CONFIG || {};
-  var APP_VERSION = '3.1.5';
+  var APP_VERSION = '3.1.6';
 
   /* ===== คำนวณตะกร้า (ใช้ร่วมกันทั้งหลังบ้านและหน้า MINI App — แก้ที่เดียวทั้งสองฝั่ง) ===== */
   function daysBetween(a, b) {
@@ -448,14 +449,18 @@
       (sim ? '<span>' + icon('clock') + ' นาฬิกาจำลอง <b class="num">' + esc(thDate(sim.now.slice(0, 10)) + ' ' + sim.now.slice(11, 16)) + '</b> (เวลาจริง ' + esc(sim.real) + ' ปิดเอง ' + esc(sim.until) + ')</span>' : '') +
       (p ? '<span class="uat-acts"><button class="btn sm" data-a="uatChat">แชตจำลอง</button><button class="btn sm" data-a="uatExit">ออกจากสวมบท</button></span>' : '') + '</div>';
   }
-  function uatNote(u) {
+  var UAT_SEQ = 0; // 3.1.6 ลำดับคำขอล่าสุดที่ใช้อัปเดตแถบ (คำตอบของคำขอเก่าที่มาถึงทีหลังไม่ทับสถานะใหม่)
+  function uatNote(u, seq) {
+    if (seq) { if (seq < UAT_SEQ) return; UAT_SEQ = seq; }
     if (S.asCust && (!u || !u.persona) && S.uat && S.uat.persona) u = Object.assign({}, u || {}, { persona: S.uat.persona }); // คำสั่งหลังร้านระหว่างสวมบทไม่ได้แนบชื่อลูกค้าทดสอบ → คงไว้
     if (u && !u.persona && !u.sim) u = null;
-    var before = JSON.stringify(S.uat || null), after = JSON.stringify(u || null), dayBefore = todayStr();
+    var before = JSON.stringify(S.uat || null), after = JSON.stringify(u || null), dayBefore = todayStr(), msBefore = (S.uat && S.uat.sim && S.uat.sim.ms) || 0;
     S.uat = u; if (before === after) return;
     var el = document.getElementById('uat-bar'), h = S.page !== 'admin' ? uatBar() : '';
     if (el) { if (h) el.outerHTML = h; else el.remove(); } else if (h && app) app.insertAdjacentHTML('afterbegin', h);
     if (window.PKAdmin && window.PKAdmin.onClock) try { window.PKAdmin.onClock(dayBefore); } catch (e) { }
+    /* 3.1.6 นาฬิกาจำลองเพิ่งมาถึง/เปลี่ยน ระหว่างเปิดตะกร้าหรือหน้าสั่งของ → วาดใหม่ให้เวลาส่งคิดจากนาฬิกาที่ถูก */
+    if (((u && u.sim && u.sim.ms) || 0) !== msBefore && /^(cart|catalog|home)$/.test(S.page) && S.cat && S.me && !formBusy()) setTimeout(function () { if (!formBusy()) show(); }, 0);
   }
   function personaStart(uid) { sessSet('pk2_ascust', uid); store('pk2_tab', 'tools'); location.href = location.pathname + '?page=home'; }
   function personaExit(msg) { sessSet('pk2_ascust', ''); S.asCust = ''; store('pk2_tab', 'tools'); if (msg) try { sessionStorage.setItem('pk2_uatmsg', msg); } catch (e) { } location.href = location.pathname + '?page=admin'; }
@@ -589,13 +594,14 @@
   liffReady = new Promise(function (res) { readyResolve = res; });
   var PERF = [];
   function perfAdd(action, ms, sms, ok) { PERF.push({ a: action, ms: ms, sms: sms || 0, ok: ok, t: Date.now() }); if (PERF.length > 300) PERF.shift(); }
+  var API_SEQ = 0, PUBLIC_ACTIONS = { catalog: 1, ping: 1, scan: 1 };
   function api(action, data, opt) {
     opt = opt || {};
     var isRead = !!READS[action], body = Object.assign({ action: action, cv: APP_VERSION }, data || {}); // cv: หลังบ้านจดว่ามีคนใช้หน้าเว็บเวอร์ชันไหน (3.1.2)
     if (!isRead) body.rid = body.rid || rid();
     if (S.asRole) body.asRole = S.asRole; // ผู้จัดการทดสอบบทบาทอื่น (หลังบ้านลดสิทธิ์ให้เท่านั้น)
     if (S.asCust) body.asCustomer = S.asCust; // 3.1.3 ผู้จัดการสวมบทลูกค้าทดสอบ (หลังบ้านตรวจสิทธิ์ทุกคำขอ)
-    var tries = opt.tries || (isRead ? 4 : 3), t0 = Date.now();
+    var tries = opt.tries || (isRead ? 4 : 3), t0 = Date.now(), seq = ++API_SEQ;
     function attempt(n) {
       try { body.token = liff.getAccessToken() || ''; } catch (e) { body.token = ''; }
       var ctrl = window.AbortController ? new AbortController() : null;
@@ -606,7 +612,7 @@
           var j; try { j = JSON.parse(t); } catch (x) { throw netErr(/<html/i.test(t) ? 'HTML' : 'NOTJSON'); }
           if (!j || !j.ok) { var e = new Error((j && j.error) || 'เกิดข้อผิดพลาด'); e.code = (j && j.code) || 'SERVER'; e.detail = j && j.detail; e.server = true; if (e.code === 'PERSONA' && S.asCust) setTimeout(function () { personaExit(e.message); }, 0); throw e; }
           if (timer) clearTimeout(timer);
-          if (action !== 'catalog' && action !== 'ping') uatNote(j.uatMode || null);
+          if (!PUBLIC_ACTIONS[action]) uatNote(j.uatMode || null, seq); // 3.1.6 คำสั่งที่ไม่ยืนยันตัวตน (catalog ping scan) ไม่มีข้อมูลนาฬิกาจำลอง ไม่ใช้ล้างแถบ
           perfAdd(action, Date.now() - t0, j.ms, true);
           return j;
         })
@@ -742,7 +748,7 @@
     H = H || hoursOf(); var tmr = q.date && q.date > todayStr();
     if (q.kind === 'pickup') return { big: (tmr ? 'พรุ่งนี้ ' : '') + 'มารับได้ ' + q.at + ' ถึง ' + q.until + ' น.', sub: 'ร้านแจ้งในแชตเมื่อจัดของเสร็จ' };
     /* 3.1.5 ยอดต่ำกว่าขั้นต่ำ (ส่งรวมรอบ): บอกว่าเป็นเวลาที่เร็วที่สุด ไม่ใช่เวลาแน่นอน */
-    if (q.kind === 'morning') return { big: (pool ? 'ส่งรวมรอบ เร็วสุดเที่ยวแรก' : 'ส่งเที่ยวแรก') + (tmr ? 'พรุ่งนี้' : 'เช้านี้') + ' ถึงก่อน ' + q.at + ' น.', sub: pool ? POOL_SUB : tmr ? 'ร้านปิดรับออเดอร์ส่งวันนี้หลัง ' + H.lastDeliver + ' น.' : 'ร้านเปิด ' + H.open + ' น.' };
+    if (q.kind === 'morning') return { big: (pool ? 'ส่งรวมรอบ เร็วสุด เที่ยวแรก ' : 'ส่งเที่ยวแรก') + (tmr ? 'พรุ่งนี้' : 'เช้านี้') + ' ถึงก่อน ' + q.at + ' น.', sub: pool ? POOL_SUB : tmr ? 'ร้านปิดรับออเดอร์ส่งวันนี้หลัง ' + H.lastDeliver + ' น.' : 'ร้านเปิด ' + H.open + ' น.' };
     /* 3.1.4 ลูกค้าไม่เห็นเป้าเวลาส่งของร้าน (ใช้ภายในร้าน) บอกเวลาที่คาดว่าจะถึงอย่างเดียว */
     if (!q.at) return { big: 'กำลังคำนวณเวลาส่งถึง', sub: pool ? POOL_SUB : 'คำนวณจากรถที่ว่างตอนนี้' };
     if (pool) return { big: 'ส่งรวมรอบ เร็วสุดประมาณ ' + q.at + ' น.', sub: POOL_SUB };
@@ -754,7 +760,7 @@
   }
   function etaRules() {
     var H = hoursOf();
-    return '<details class="eta-rules"><summary>ร้านจัดรอบให้อัตโนมัติ แตะดูเวลาส่ง</summary><table><tbody>' +
+    return '<details class="eta-rules"><summary>ตารางจัดเวลาส่ง</summary><table><tbody>' +
       '<tr><th>สั่ง ' + H.open + ' ถึง ' + H.lastDeliver + ' น.</th><td>ส่งวันนี้ ดูเวลาที่คาดว่าจะถึงก่อนกดสั่ง</td></tr>' +
       '<tr><th>สั่งหลัง ' + H.lastDeliver + ' น.</th><td>ส่งเที่ยวแรกพรุ่งนี้ ถึงก่อน ' + H.morningDue + ' น.</td></tr>' +
       '<tr><th>สั่งก่อน ' + H.open + ' น.</th><td>ส่งเที่ยวแรก ถึงก่อน ' + H.morningDue + ' น.</td></tr>' +
@@ -1416,7 +1422,7 @@
     if (o.delivery === 'out') return '<b>กำลังนำส่ง' + (o.eta ? ' ถึงประมาณ ' + esc(o.eta) + ' น.' : '') + '</b>';
     var p = String(o.promiseAt || ''), d = p.slice(0, 10), t = p.slice(11, 16), day = d && d !== todayStr() ? ' ' + thDate(d) : '';
     var pool = o.pool && !o.delivery; // 3.1.5 ส่งรวมรอบ: เวลาที่เร็วที่สุด
-    if (t && o.slot === 'เที่ยวแรก') return (pool ? 'ส่งรวมรอบ เร็วสุดเที่ยวแรก' : 'ส่งเที่ยวแรก') + (day || ' วันนี้') + ' ถึงก่อน ' + esc(t) + ' น.';
+    if (t && o.slot === 'เที่ยวแรก') return (pool ? 'ส่งรวมรอบ เร็วสุด เที่ยวแรก' : 'ส่งเที่ยวแรก') + (day || ' วันนี้') + ' ถึงก่อน ' + esc(t) + ' น.';
     if (t) return (pool ? 'ส่งรวมรอบ เร็วสุดประมาณ ' : 'ส่งถึงประมาณ ') + esc(t) + ' น.' + day;
     return 'รอบส่ง: ' + esc(custSlot(o.slot)) + (o.deliverDate && o.deliverDate !== o.date ? ' ' + thDate(o.deliverDate) : '') + (o.pool && !o.delivery ? '<br><b>ส่งรวมรอบ</b> (รอรอบผ่านย่านของคุณ)' : '');
   }

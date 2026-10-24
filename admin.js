@@ -3,6 +3,7 @@
  * v3.0.0: โปร Smart/Magnet, สต็อก SAP (F1595/F1077), แต้มผู้แนะนำ, ช่องทาง QR, KPI, พื้นที่จัดส่ง, รีเซ็ตข้อมูล UAT
  * v3.1.0: เมนูซ้าย + โหมดมืด/สว่าง, เปิดบิลขั้นตอนเดียว, ระบบแนะนำการออกรถ (ส่งภายใน 1 ชม. รถ 2 คัน ไม่ใส่เลขไมล์),
  *         ค้นหาราคา/สต๊อก, แท็บโปรโมชั่น (Smart / Magnet), คำขอผูกบัญชีลูกค้าเดิม, ตั้งเวลาทำการ, กดแล้วตอบสนองทันที
+ * v3.1.6: ปิดข้อสังเกต UAT ระบบจริง 3.1.5 (เตือนยอดบิลต่างจากยอดประมาณ, ไฟล์ Excel เสียบอกวิธีแก้)
  * v3.1.5: ปิดข้อสังเกต UAT ระบบจริง 3.1.4 (ช่องอัปโหลด F1077, ตารางหยุดขาย, ช่องมีของ, คำเตือนออกรถ, ช่องทาง QR, ลบข้อมูลส่วนบุคคล)
  * v3.1.4: KPI ลูกค้าเดิมนับเฉพาะลูกค้าเดิม, บอกจำนวนออเดอร์ที่แก้หมุด, แจ้งลูกค้าเมื่อตรวจไม่พบยอด, บรอดแคสต์นับโควตาเฉพาะคนจริง, ข้อความออกรถบิลหนัก, คำเตือนบนปุ่มออกรถ 8 วินาที
  * v3.1.3: เครื่องมือ UAT บนระบบจริงในแท็บเครื่องมือ (ลูกค้าทดสอบ นาฬิกาจำลอง รันงานแบบทดสอบ โควตาจำลอง แชตจำลอง ล้างข้อมูลทดสอบ)
@@ -164,16 +165,18 @@
       '<div class="row tot"><span>ยอดประมาณ</span><span>' + baht(o.est) + '</span></div>' +
       (o.belowMin ? '<div class="alert warn">ยอดต่ำกว่าขั้นต่ำส่ง</div>' : '') + (other ? '<div class="alert info">ลูกค้ารายนี้มีอีกออเดอร์ ' + esc(other.id) + ' ส่งพร้อมกันได้</div>' : '');
     if (o.status !== 'cancelled' && o.status !== 'paid') h += '<div class="pos"><b>คีย์ใน POS</b>' + posLines(o, d.cfg).map(function (x) { return '<div>' + esc(x) + '</div>'; }).join('') + (o.txn ? '<div>บิล ' + esc(o.txn) + ' ยอดจริง ' + baht(o.actual) + '</div>' : '') + '</div>';
-    var edit = can('orders');
-    if (edit && open) {
-      var dup = A.dupTxn[o.id], dg = d.cfg.TXN_DIGITS || 7;
-      h += '<form class="bill-form" data-form="billOrder" data-id="' + esc(o.id) + '"><label class="bf-field"><span>Transaction No.</span><input name="txn" class="mono" required inputmode="numeric" placeholder="เช่น 0316349" autocomplete="off" value="' + esc(dup ? dup.txn : '') + '"></label>' +
-        '<label class="bf-field"><span>ยอด Net-Total จริง</span><input name="actual" inputmode="decimal" required value="' + (dup ? esc(dup.actual) : o.est) + '"></label>' +
-        '<div class="bf-acts"><button class="btn blue" type="submit">ส่งบิลให้ลูกค้า</button><button class="btn bad sm" type="button" data-a="adm" data-op="cancelOrder" data-id="' + esc(o.id) + '" data-confirm="1">ยกเลิก</button></div>' +
+    var edit = can('orders'), reb = edit && o.status === 'billed' && o.pay && !(o.pay.confirmed > 0); // 3.1.6 แก้บิลได้จนกว่าร้านจะยืนยันรับเงิน
+    if (edit && (open || (reb && A.open['rb-' + o.id]))) {
+      var dup = A.dupTxn[o.id], dg = d.cfg.TXN_DIGITS || 7, re = !open;
+      if (re) h += '<div class="alert info">แก้บิล (บิลเดิม ' + esc(o.txn) + ' ยอด ' + baht(o.actual) + ') ส่งแล้วลูกค้าได้การ์ด "บิลแก้ไข ใช้แทนบิลก่อนหน้า"</div>';
+      h += '<form class="bill-form" data-form="billOrder" data-id="' + esc(o.id) + '" data-est="' + esc(o.est) + '"' + (re ? ' data-re="1"' : '') + '><label class="bf-field"><span>Transaction No.</span><input name="txn" class="mono" required inputmode="numeric" placeholder="เช่น 0316349" autocomplete="off" value="' + esc(dup ? dup.txn : re ? o.txn : '') + '"></label>' +
+        '<label class="bf-field"><span>ยอด Net-Total จริง</span><input name="actual" inputmode="decimal" required value="' + (dup ? esc(dup.actual) : re ? esc(o.actual) : o.est) + '"></label>' +
+        '<div class="bf-acts"><button class="btn blue" type="submit">' + (re ? 'ส่งบิลแก้ไข' : 'ส่งบิลให้ลูกค้า') + '</button>' + (re ? '<button class="btn sm" type="button" data-a="admToggle" data-k="rb-' + esc(o.id) + '">ปิด</button>' : '<button class="btn bad sm" type="button" data-a="adm" data-op="cancelOrder" data-id="' + esc(o.id) + '" data-confirm="1">ยกเลิก</button>') + '</div>' +
         '<small class="hint txn-hint">' + (dup ? 'จะบันทึกเป็น ' + esc(C.txnNorm(dup.txn, dg)) : 'พิมพ์เลขเต็มจากสลิป POS ได้ ระบบเก็บ ' + dg + ' หลักท้าย') + '</small></form>' +
         (dup ? '<div class="alert warn">' + esc(dup.msg) + ' <button class="btn sm" data-a="admForceTxn" data-id="' + esc(o.id) + '">ยืนยันใช้เลขนี้ (บิลคนละใบ)</button></div>' : '');
     }
-    if (o.status === 'billed') h += '<div class="row-flex">' + payPill(o.pay) + '<span class="hint">ยอดที่ต้องรับ ' + baht(o.pay.due) + (o.pay.received ? ', แจ้งโอนแล้ว ' + baht(o.pay.received) : '') + '</span><button class="text-btn" data-a="tab" data-p="pay">ไปแท็บชำระเงิน</button></div>';
+    if (o.status === 'billed') h += '<div class="row-flex">' + payPill(o.pay) + '<span class="hint">ยอดที่ต้องรับ ' + baht(o.pay.due) + (o.pay.received ? ', แจ้งโอนแล้ว ' + baht(o.pay.received) : '') + '</span><button class="text-btn" data-a="tab" data-p="pay">ไปแท็บชำระเงิน</button>' +
+      (reb && !A.open['rb-' + o.id] ? '<button class="text-btn" data-a="admToggle" data-k="rb-' + esc(o.id) + '">แก้บิล</button>' : '') + '</div>';
     return h + '</article>';
   }
   function adOrders(d) {
@@ -187,7 +190,7 @@
     if (!open.length) h += '<div class="empty">' + icon('check') + '<b>ไม่มีออเดอร์ค้าง</b><span>ออเดอร์ใหม่ขึ้นเองพร้อมเสียงเตือน</span></div>';
     var toBill = open.filter(function (o) { return /new|approved/.test(o.status); }).sort(function (a, b) { return dueKey(a) < dueKey(b) ? -1 : dueKey(a) > dueKey(b) ? 1 : 0; }), billed = open.filter(function (o) { return o.status === 'billed'; });
     if (toBill.length) h += '<h3 class="group-h">รอเปิดบิล <span class="cnt-pill">' + toBill.length + '</span><span class="hint">เรียงตามเวลาที่ต้องส่ง</span>' + pickAll('ord', toBill.map(function (o) { return o.id; })) + '</h3>' + toBill.map(function (o) { return orderCard(o, d, open); }).join('');
-    if (billed.length) { var ids = billed.map(function (o) { return o.id; }); h += '<details class="box group"' + (ids.some(function (id) { return (A.pick.ord || {})[id]; }) ? ' open' : '') + '><summary>ส่งบิลแล้ว รอชำระ (' + billed.length + ')</summary>' + pickAll('ord', ids) + billed.map(function (o) { return orderCard(o, d, open); }).join('') + '</details>'; }
+    if (billed.length) { var ids = billed.map(function (o) { return o.id; }); h += '<details class="box group"' + (ids.some(function (id) { return (A.pick.ord || {})[id] || A.open['rb-' + id] || A.dupTxn[id]; }) ? ' open' : '') + '><summary>ส่งบิลแล้ว รอชำระ (' /* 3.1.6 กำลังแก้บิล: กล่องเปิดค้าง */ + billed.length + ')</summary>' + pickAll('ord', ids) + billed.map(function (o) { return orderCard(o, d, open); }).join('') + '</details>'; }
     h += '<h3 class="group-h">เสร็จแล้วในช่วงวันที่</h3>' + rangeBar([['orders', 'ออเดอร์'], ['lines', 'รายการสินค้า']]);
     h += done.length ? '<div class="tblw"><table><thead><tr><th>ออเดอร์</th><th>วันที่</th><th>ลูกค้า</th><th>สถานะ</th><th class="r">ยอด</th></tr></thead><tbody>' + done.map(function (o) { return '<tr><td class="mono">' + esc(o.id) + '</td><td>' + esc(o.created) + '</td><td>' + esc(o.memberName) + '</td><td>' + statusPill(o.status) + '</td><td class="r">' + baht(o.actual || o.est) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="hint">ยังไม่มีออเดอร์ที่ชำระแล้วหรือยกเลิกในช่วงนี้</div>';
     return h;
@@ -801,7 +804,7 @@
     h += '<h4>5. แชตจำลอง (' + (cn.chat || 0) + ' ข้อความ)</h4><div class="hint">ข้อความที่ระบบจะส่งถึงลูกค้าทดสอบ และข้อความที่เก็บไว้แทนการส่งระหว่างสวมบท/รันงานทดสอบ</div><div class="acts"><button class="btn sm" data-a="admUatChat" data-p="">' + (A.uatChat ? 'โหลดใหม่' : 'เปิดแชตจำลอง') + '</button>' + (A.uatChat ? '<button class="btn sm" data-a="admUatChatClose">ซ่อน</button>' : '') + '</div>' +
       (A.uatChat ? '<div class="tc-list">' + (A.uatChat.uid ? '<div class="hint">เฉพาะ ' + esc(((u.personas || []).filter(function (p) { return p.uid === A.uatChat.uid; })[0] || {}).name || A.uatChat.uid) + '</div>' : '') + C.chatList(A.uatChat.rows, true) + '</div>' : '');
     /* ล้างข้อมูลทดสอบ */
-    h += '<h4>6. ล้างข้อมูลทดสอบ</h4><form data-form="uatClean"><div class="hint">ลบเฉพาะลูกค้าทดสอบ สมาชิกเดิมทดสอบ และออเดอร์ การชำระ แต้ม ที่อยู่ เที่ยวรถ แชตจำลองของเขา ข้อมูลจริงไม่ถูกแตะ (ตอนนี้: ลูกค้าทดสอบ ' + (cn.personas || 0) + ' บัญชี, สมาชิกทดสอบ ' + (cn.members || 0) + ', ออเดอร์ทดสอบ ' + (cn.orders || 0) + ')</div><div class="field" style="max-width:260px"><label for="uat-clean">พิมพ์ TEST เพื่อยืนยัน</label><input id="uat-clean" name="confirm" autocomplete="off" class="mono" placeholder="TEST"></div><button class="btn bad" type="submit">ล้างข้อมูลทดสอบ</button></form></div>';
+    h += '<h4>6. ล้างข้อมูลทดสอบ</h4><form data-form="uatClean"><div class="hint">ลบเฉพาะลูกค้าทดสอบ สมาชิกเดิมทดสอบ และออเดอร์ การชำระ แต้ม ที่อยู่ เที่ยวรถ แชตจำลอง การสแกนป้าย รูปสลิป/รูปหน้าร้านใน Drive ของเขา และบรอดแคสต์ที่ส่งถึงลูกค้าทดสอบอย่างเดียว ข้อมูลจริงไม่ถูกแตะ (ตอนนี้: ลูกค้าทดสอบ ' + (cn.personas || 0) + ' บัญชี, สมาชิกทดสอบ ' + (cn.members || 0) + ', ออเดอร์ทดสอบ ' + (cn.orders || 0) + ')</div><div class="field" style="max-width:260px"><label for="uat-clean">พิมพ์ TEST เพื่อยืนยัน</label><input id="uat-clean" name="confirm" autocomplete="off" class="mono" placeholder="TEST"></div><button class="btn bad" type="submit">ล้างข้อมูลทดสอบ</button></form></div>';
     return h;
   }
   function hmAddLocal(t, min) { var p = String(t).split(':'), x = Number(p[0]) * 60 + Number(p[1]) + min; x = ((x % 1440) + 1440) % 1440; return ('0' + Math.floor(x / 60)).slice(-2) + ':' + ('0' + (x % 60)).slice(-2); }
@@ -953,7 +956,7 @@
         if (kind === 'snap') A.stk = { file: file.name, body: body, res: r, kind: body.kind }; else A.mv = { file: file.name, body: body, res: r };
         draw();
       });
-    }).catch(function (e) { C.busy(false); toast('อ่านไฟล์ไม่สำเร็จ: ' + e.message, 5000); });
+    }).catch(function (e) { C.busy(false); toast('อ่านไฟล์ไม่สำเร็จ: ' + e.message, 7000); });
   }
   /* ---------- Excel (.xlsx) เขียนเอง ไม่ต้องใช้ไลบรารี ---------- */
   var CRC = (function () { var t = []; for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -1108,11 +1111,16 @@
       if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
       return rows;
     }
+    var KNOWN = /^(ไฟล์นี้ไม่ใช่|ไม่พบชีตแรก|อุปกรณ์นี้อ่านไฟล์|รองรับเฉพาะไฟล์)/;
     function read(file) {
       return file.arrayBuffer().then(function (buf) {
         if (/\.csv$/i.test(file.name)) return parseCsv(decodeText(buf));
         if (/\.xlsx$/i.test(file.name)) return readXlsx(buf);
         throw new Error('รองรับเฉพาะไฟล์ .xlsx และ .csv (ถ้าเป็น .xls ให้เปิดใน Excel แล้ว Save As เป็น .xlsx)');
+      }).catch(function (e) { // 3.1.6 ไฟล์เสีย (เช่น "Failed to fetch" จากตัวคลายไฟล์ของเบราว์เซอร์) → บอกวิธีแก้แทนข้อความเทคนิค
+        if (e && KNOWN.test(String(e.message || ''))) throw e;
+        console.warn('SHEETFILE', file && file.name, e);
+        throw new Error('ไฟล์เสียหรือไม่ใช่ไฟล์ Excel ที่ถูกต้อง ให้ Export จาก Fiori ใหม่ หรือเปิดใน Excel แล้วบันทึกเป็น .xlsx หรือ .csv แล้วลองอีกครั้ง');
       });
     }
     return { read: read, parseCsv: parseCsv };
@@ -1135,7 +1143,7 @@
       }
       if (!rows.length) { toast('ไม่พบแถวสินค้าในไฟล์'); return; }
       run('กำลังตรวจไฟล์...', api('priceUpload', { rows: rows, save: false }), function (res) { A.check = { rows: res.check.rows, missing: res.check.missing, upload: rows, file: file.name }; draw(); });
-    }).catch(function (err) { C.busy(false); toast('อ่านไฟล์ไม่สำเร็จ: ' + err.message); });
+    }).catch(function (err) { C.busy(false); toast('อ่านไฟล์ไม่สำเร็จ: ' + err.message, 7000); });
     var inp = document.getElementById('priceFile'); if (inp) inp.value = '';
   }
   function photoUpload(input) {
@@ -1398,7 +1406,8 @@
   FORMS.uatQuota = function (f) { var fd = new FormData(f); run('กำลังตั้งโควตาจำลอง...', api('uatTool', { op: 'quota', left: fd.get('left') }), function (r) { return uatAfter(r, 'ตั้งโควตาจำลองแล้ว (เหลือ ' + (r.uatTools && r.uatTools.quota ? r.uatTools.quota.left : fd.get('left')) + ')'); }).catch(function () { }); };
   FORMS.uatClean = function (f) {
     var v = String(new FormData(f).get('confirm') || '').trim(); if (v !== 'TEST') { toast('พิมพ์คำว่า TEST (ตัวพิมพ์ใหญ่) เพื่อยืนยัน'); return; }
-    run('กำลังล้างข้อมูลทดสอบ...', api('uatTool', { op: 'clean', confirm: 'TEST' }), function (r) { A.uatChat = null; var c = r.cleaned || {}; return uatAfter(r, 'ล้างแล้ว: สมาชิก ' + (c.members || 0) + ', ออเดอร์ ' + (c.orders || 0) + (c.unlinked ? ', ถอดการผูก ' + c.unlinked : '')); }).catch(function () { });
+    run('กำลังล้างข้อมูลทดสอบ...', api('uatTool', { op: 'clean', confirm: 'TEST' }), function (r) { A.uatChat = null; var c = r.cleaned || {}; return uatAfter(r, 'ล้างแล้ว: สมาชิก ' + (c.members || 0) + ', ออเดอร์ ' + (c.orders || 0) + (c.unlinked ? ', ถอดการผูก ' + c.unlinked : '') +
+      (c.partnerScans ? ', ตัวนับสแกนป้าย −' + c.partnerScans : '') + (c.Broadcasts ? ', บรอดแคสต์ทดสอบ ' + c.Broadcasts : '') + (c.driveFiles ? ', รูปทดสอบใน Drive ' + c.driveFiles + ' (ย้ายลงถังขยะ)' : '')); }) // 3.1.6.catch(function () { });
   };
   /* นาฬิกาจำลองเปลี่ยน (ตั้ง/ปิด/หมดอายุ) → วันที่ของตัวกรองและหน้าจัดรอบส่งตามวันของนาฬิการ้าน */
   function onClock(dayBefore) {
@@ -1442,7 +1451,7 @@
       for (var i = 1; i < arr.length; i++) { var row = arr[i] || []; if (row.every(function (v) { return String(v === undefined ? '' : v).trim() === ''; })) continue; var o = {}; Object.keys(ix).forEach(function (k) { o[k] = ix[k] >= 0 && row[ix[k]] !== undefined ? String(row[ix[k]]).trim() : ''; }); rows.push(o); }
       if (!rows.length) { toast('ไม่พบแถวข้อมูล'); return; }
       run('กำลังตรวจไฟล์...', api('memberImport', { rows: rows }), function (r) { A.imp = { rows: rows, check: r.check, sum: r.sum, file: file.name }; draw(); });
-    }).catch(function (e) { C.busy(false); toast('อ่านไฟล์ไม่สำเร็จ: ' + e.message); });
+    }).catch(function (e) { C.busy(false); toast('อ่านไฟล์ไม่สำเร็จ: ' + e.message, 7000); });
   }
   ACT.adm = function (el) {
     if (el.dataset.confirm && !el.dataset.sure) { el.dataset.sure = '1'; el.dataset.label = el.textContent; el.textContent = 'กดอีกครั้งเพื่อยืนยัน'; setTimeout(function () { if (el.isConnected) { delete el.dataset.sure; el.textContent = el.dataset.label; } }, 4000); return; }
@@ -1476,10 +1485,20 @@
     }).catch(function () { });
   };
   function geoParse(s) { var m = /(-?\d{1,2}\.\d+)\s*,\s*(-?\d{2,3}\.\d+)/.exec(String(s || '')) || /@(-?\d{1,2}\.\d+),(-?\d{2,3}\.\d+)/.exec(String(s || '')); return m ? { lat: Number(m[1]), lng: Number(m[2]) } : null; }
+  var BILL_WARN = 0.3; // 3.1.6 ยอดจริงต่างจากยอดประมาณเกิน 30% ต้องกดยืนยันอีกครั้ง (กันพิมพ์ผิด)
   FORMS.billOrder = function (f) {
     var fd = new FormData(f), id = f.dataset.id, txn = String(fd.get('txn') || ''), actual = String(fd.get('actual')).replace(/,/g, '');
+    var est = Number(f.dataset.est) || 0, a = Number(actual), key = txn + '|' + actual, btn = f.querySelector('button[type=submit]');
+    var sure = A.billSure = A.billSure || {}; // จำไว้ข้ามการวาดหน้าจอใหม่ (หน้าจอรีเฟรชระหว่างอ่านคำเตือน)
+    if (est > 0 && a > 0 && Math.abs(a - est) / est > BILL_WARN && sure[id] !== key) {
+      sure[id] = key;
+      var w = f.querySelector('.bf-warn'); if (!w) { w = document.createElement('div'); w.className = 'alert warn bf-warn'; w.setAttribute('role', 'alert'); w.style.gridColumn = '1/-1'; f.appendChild(w); }
+      w.textContent = 'ยอดจริง ' + baht(a) + (a > est ? ' มากกว่า' : ' น้อยกว่า') + 'ยอดประมาณ ' + baht(est) + ' อยู่ ' + Math.round(Math.abs(a - est) / est * 100) + '% ตรวจตัวเลขกับสลิป POS อีกครั้ง ถ้าถูกต้องกดยืนยันได้เลย';
+      if (btn) btn.textContent = 'ยืนยันส่งบิล ' + baht(a);
+      return;
+    }
     C.busy(true, 'กำลังส่งบิล...');
-    api('billOrder', { id: id, txn: txn, actual: actual }).then(function (r) { C.busy(false); delete A.dupTxn[id]; after(r, 'ส่งบิลให้ลูกค้าแล้ว'); }).catch(function (e) {
+    api('billOrder', { id: id, txn: txn, actual: actual }).then(function (r) { C.busy(false); delete A.dupTxn[id]; delete sure[id]; A.open['rb-' + id] = false; after(r, r && r.rebill ? 'ส่งบิลแก้ไขให้ลูกค้าแล้ว' : 'ส่งบิลให้ลูกค้าแล้ว'); }).catch(function (e) {
       C.busy(false);
       if (e.code === 'DUPTXN') { A.dupTxn[id] = { txn: txn, actual: actual, msg: e.message }; draw(); var el = document.getElementById('o-' + id); if (el) el.scrollIntoView({ block: 'center' }); return; }
       C.fail(e);
@@ -1577,7 +1596,7 @@
         if (Object.keys(e).length) { ed[sku] = Object.assign(ed[sku] || {}, e); n++; }
       });
       toast('อ่านแล้ว ' + n + ' รายการ · ตรวจในตาราง แล้วกด "บันทึก"', 4000); draw();
-    }).catch(function (e) { C.busy(false); toast('อ่านไฟล์ไม่สำเร็จ: ' + e.message); });
+    }).catch(function (e) { C.busy(false); toast('อ่านไฟล์ไม่สำเร็จ: ' + e.message, 7000); });
   }
   ACT.admStockSave = function () {
     var sk = A.stk; if (!sk) return;
